@@ -24,7 +24,7 @@ export function Layout(props) {
         <Link href="/">Accueil</Link>
         <a href="mailto:bureaudesarts.minesparis@gmail.com">Contact</a>
         <a href="https://www.instagram.com/nenuphart.bda.p24/" target="_blank">Instagram</a>
-        <Link href="https://github.com/romain-lelaidier/equipaps" target="_blank">GitHub</Link>
+        <Link href="https://github.com/rom1922/equipaps" target="_blank">GitHub</Link>
       </footer>
     </>
   )

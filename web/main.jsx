@@ -15,13 +15,13 @@ function Page404() {
   return (
     <Layout center={true}>
       <MetaProvider>
-        <Title>Nénuph'art - Oupsss ?</Title>
+        <Title>BDA équi-PAPS - Oupsss ?</Title>
       </MetaProvider>
 
       <BackButton/>
 
       <div class="text-xl">
-        404 - Je croâ que ton URL a un problème :(
+        404 - Cette page n'existe pas :(
       </div>
     </Layout>
   );
