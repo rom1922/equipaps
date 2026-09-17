@@ -343,7 +343,11 @@ app.get("/api/roster/search", (req, res) => {
   const out = [];
   for (const r of roster) {
     if (!r.search_key) continue;
-    if (r.search_key.includes(q) || q.includes(r.search_key.split(" ")[0])) {
+    const first = r.search_key.split(" ")[0];
+    // clause principale : le nom complet contient la requête ; clause de repli
+    // (requête plus longue que le prénom) bornée à >=3 car. pour éviter les
+    // faux positifs sur des prénoms courts (« ad » ⊂ « spada »).
+    if (r.search_key.includes(q) || (first.length >= 3 && q.includes(first))) {
       out.push({ prenom: r.prenom, nom: r.nom, pxx: r.pxx, promo: r.promo });
       if (out.length >= 40) break;
     }
