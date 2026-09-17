@@ -9,6 +9,7 @@ import CreateEvent from "./pages/createevent.jsx";
 import EditEvent from "./pages/editevent.jsx";
 import ListEvents from "./pages/listevents.jsx";
 import Event from "./pages/event.jsx";
+import Admin from "./pages/admin.jsx";
 import { BackButton } from "./components/utils.jsx";
 
 function Page404() {
@@ -35,6 +36,7 @@ render(
       <Route path="/event/:id" component={Event} />
       <Route path="/editevent/:id" component={EditEvent} />
       <Route path="/listevents" component={ListEvents} />
+      <Route path="/admin" component={Admin} />
       <Route path="*paramName" component={Page404} />
     </Router>
   ),

@@ -66,12 +66,30 @@ const eventPasswordHashed = await crypto.subtle.digest("SHA-256", new TextEncode
 const eventPasswordHashHex = Array.from(new Uint8Array(eventPasswordHashed)).map(b => b.toString(16).padStart(2, '0')).join('');
 process.env.EVENT_CREATION_HASH = eventPasswordHashHex;
 
-app.post("/api/createevent", async (req, res) => {
-  const { name, location, participants, description, hash } = req.body;
-  if (hash !== process.env.EVENT_CREATION_HASH) {
-    res.status(403).json({ success: false, message: "Mauvais mot de passe" });
+// --- Auth admin par session (remplace le hash SHA-256 envoyé à chaque action).
+// Le client envoie le SHA-256 du mot de passe partagé du bureau ; en cas de
+// correspondance, on émet un JWT de session { admin: true } que les routes
+// d'administration exigent ensuite via authenticateAdmin.
+app.post("/api/login", (req, res) => {
+  const { hash } = req.body;
+  if (!hash || hash !== process.env.EVENT_CREATION_HASH) {
+    res.status(401).json({ success: false, message: "Mot de passe incorrect" });
     return;
   }
+  const token = jsonwebtoken.sign({ admin: true }, process.env.JWT_SECRET, { expiresIn: "30d" });
+  res.json({ success: true, token });
+});
+
+const authenticateAdmin = (req, res, next) => {
+  try {
+    const decoded = jsonwebtoken.verify(req.headers.authorization || "", process.env.JWT_SECRET);
+    if (decoded && decoded.admin) { req.admin = true; return next(); }
+  } catch (_) { /* token absent/invalide/expiré */ }
+  res.status(401).json({ success: false, message: "Accès admin requis. Merci de te connecter." });
+};
+
+app.post("/api/createevent", authenticateAdmin, async (req, res) => {
+  const { name, location, participants, description } = req.body;
 
   const date = new Date(req.body.date);
   const paps = new Date(req.body.paps);
@@ -83,12 +101,8 @@ app.post("/api/createevent", async (req, res) => {
   res.status(201).json({ success: true, id });
 });
 
-app.post("/api/editevent", async (req, res) => {
-  const { id, name, location, participants, description, hash, users } = req.body;
-  if (hash !== process.env.EVENT_CREATION_HASH) {
-    res.status(403).json({ success: false, message: "Mauvais mot de passe" });
-    return;
-  }
+app.post("/api/editevent", authenticateAdmin, async (req, res) => {
+  const { id, name, location, participants, description, users } = req.body;
   const date = new Date(req.body.date);
   const paps = new Date(req.body.paps);
   if (!id) {
@@ -131,12 +145,8 @@ app.post("/api/editevent", async (req, res) => {
   res.status(200).json({ success: true, id });
 });
 
-app.post("/api/closeevent", async (req, res) => {
-  const { id, hash } = req.body;
-  if (hash !== process.env.EVENT_CREATION_HASH) {
-    res.status(403).json({ success: false, message: "Mauvais mot de passe" });
-    return;
-  }
+app.post("/api/closeevent", authenticateAdmin, async (req, res) => {
+  const { id } = req.body;
   if (!id) {
     res.status(400).json({ success: false, message: "ID manquant" });
     return;
@@ -158,12 +168,8 @@ app.post("/api/closeevent", async (req, res) => {
   }
 });
 
-app.post("/api/removeevent", async (req, res) => {
-  const { id, hash } = req.body;
-  if (hash !== process.env.EVENT_CREATION_HASH) {
-    res.status(403).json({ success: false, message: "Mauvais mot de passe" });
-    return;
-  }
+app.post("/api/removeevent", authenticateAdmin, async (req, res) => {
+  const { id } = req.body;
   if (!id) {
     res.status(400).json({ success: false, message: "ID manquant" });
     return;
@@ -418,6 +424,19 @@ app.post("/api/paps", authenticateJWT, async (req, res) => {
   }
 
   res.status(201).json(event);
+});
+
+// Monitoring admin : chiffres agrégés pour le tableau de bord.
+app.get("/api/admin/summary", authenticateAdmin, async (req, res) => {
+  const events = await db.select().from(schema.events);
+  const inscriptions = (await db.select().from(schema.paps)).length;
+  res.json({
+    events: events.length,
+    openEvents: events.filter(e => !e.closed).length,
+    inscriptions,
+    cotisants: roster.filter(r => r.cotisant).length,
+    roster: roster.length,
+  });
 });
 
 const PORT = process.env.PORT_API || 3000;

@@ -3,6 +3,7 @@ import { MetaProvider, Title } from "@solidjs/meta";
 import { Layout } from "../components/layout";
 import { BackButton, Link, LinkButton, mds } from "../components/utils";
 import { Icon } from "../components/icons";
+import { isAdmin } from "../res/admin";
 
 async function fetchEvents() {
   const res = await fetch("/api/events");
@@ -25,7 +26,9 @@ export default function ListEventsPage() {
       <div class="mb-4">
         <BackButton/>
         <h2 class="text-2xl font-bold">Évènements à venir</h2>
-        <LinkButton href="/createevent">Créer un évènement (admin only)</LinkButton>
+        <Show when={isAdmin()}>
+          <LinkButton href="/createevent">Créer un évènement</LinkButton>
+        </Show>
       </div>
       
       <Show when={events.loading}>

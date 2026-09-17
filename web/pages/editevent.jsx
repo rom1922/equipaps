@@ -2,9 +2,10 @@ import { createEffect, createResource, createSignal, For, Show } from "solid-js"
 import { MetaProvider, Title } from "@solidjs/meta";
 import { Layout } from "../components/layout";
 import { useNavigate, useParams } from "@solidjs/router";
-import { BackButton, dateForDateTimeInputValue } from "../components/utils";
+import { BackButton, LinkButton, dateForDateTimeInputValue } from "../components/utils";
 import { User } from "../components/user"
 import { RosterSearch } from "../components/rostersearch";
+import { isAdmin, adminHeaders } from "../res/admin";
 
 async function fetchEvent(id) {
   const res = await fetch(`/api/event/${id}`);
@@ -42,13 +43,9 @@ export default function EventForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const password = prompt("Entrez le mot de passe pour modifier l'événement :");
-      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password || ""));
-      const hashHex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-      var res = await (await fetch("/api/editevent", {
+      const r = await fetch("/api/editevent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: adminHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           id: params.id,
           name: name(),
@@ -58,9 +55,10 @@ export default function EventForm() {
           participants: participants(),
           description: description(),
           users: pxxs(),
-          hash: hashHex
         }),
-      })).json();
+      });
+      if (r.status === 401) { setStatus("Session expirée. Reconnecte-toi dans l'espace bureau."); return; }
+      var res = await r.json();
       if (res.success === false) {
         setStatus(res.message || "Erreur lors de l'enregistrement. Merci de réessayer.");
         return;
@@ -84,18 +82,13 @@ export default function EventForm() {
   const handleRemove = async (e) => {
     e.preventDefault();
     try {
-      const password = prompt("Entrez le mot de passe pour supprimer l'événement :");
-      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password || ""));
-      const hashHex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-      var res = await (await fetch("/api/removeevent", {
+      const r = await fetch("/api/removeevent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: params.id,
-          hash: hashHex,
-        }),
-      })).json();
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ id: params.id }),
+      });
+      if (r.status === 401) { setStatus("Session expirée. Reconnecte-toi dans l'espace bureau."); return; }
+      var res = await r.json();
       if (res.success === false) {
         setStatus(res.message || "Erreur lors de la suppression. Merci de réessayer.");
         return;
@@ -112,18 +105,13 @@ export default function EventForm() {
   const closeEvent = async (e) => {
     e.preventDefault();
     try {
-      const password = prompt("Entrez le mot de passe pour modifier l'événement :");
-      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password || ""));
-      const hashHex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-      var res = await (await fetch("/api/closeevent", {
+      const r = await fetch("/api/closeevent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: params.id,
-          hash: hashHex
-        }),
-      })).json();
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ id: params.id }),
+      });
+      if (r.status === 401) { setStatus("Session expirée. Reconnecte-toi dans l'espace bureau."); return; }
+      var res = await r.json();
 
       if (res.success === false) {
         setStatus(res.message || "Erreur lors de la fermeture de l'événement. Merci de réessayer.");
@@ -146,6 +134,7 @@ export default function EventForm() {
       <div class="flex flex-col w-full">
         <BackButton/>
         <h2 class="text-2xl font-bold mb-4">Edition - {name()}</h2>
+        <Show when={isAdmin()} fallback={<p class="text-gray-700">Réservé au bureau. <LinkButton href="/admin">Se connecter</LinkButton></p>}>
         <form onSubmit={handleSubmit} class="flex flex-col gap-3 mb-1">
           <input
             type="text"
@@ -220,6 +209,7 @@ export default function EventForm() {
         </Show>
 
         <button type="submit" class="bg-rf text-white rounded p-2 font-bold cursor-pointer" onClick={handleRemove}>Supprimer l'évènement</button>
+        </Show>
         {status() && <div class="mt-2 text-center">{status()}</div>}
 
       </div>

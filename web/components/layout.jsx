@@ -22,6 +22,7 @@ export function Layout(props) {
       </div>
       <footer class="footer sm:footer-horizontal bg-b text-d flex justify-center flex-wrap [&>*]:px-4 [&>*]:py-0.5">
         <Link href="/">Accueil</Link>
+        <Link href="/admin">Bureau</Link>
         <a href="mailto:bureaudesarts.minesparis@gmail.com">Contact</a>
         {/* Instagram : compte du mandat courant. SEULE valeur a changer a la passation d'un bureau a l'autre. */}
         <a href="https://www.instagram.com/art_lequin_bda_p25/" target="_blank">Instagram</a>

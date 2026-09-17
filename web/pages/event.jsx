@@ -5,6 +5,7 @@ import { Layout } from "../components/layout";
 import { User } from "../components/user"
 
 import { RosterSearch } from "../components/rostersearch";
+import { isAdmin } from "../res/admin";
 import { BackButton, LinkButton } from "../components/utils";
 import { Icon } from "../components/icons";
 
@@ -73,7 +74,9 @@ export default function EventPage() {
           <>
             <div class="mb-2">
               <h2 class="text-2xl font-bold">{ev().name}</h2>
-              <LinkButton href={"/editevent/" + ev().id}>Modifier l'événement (admin only)</LinkButton>
+              <Show when={isAdmin()}>
+                <LinkButton href={"/editevent/" + ev().id}>Modifier l'événement</LinkButton>
+              </Show>
             </div>
             <div class="mb-2 text-gray-700 flex flex-row items-center gap-1">
               <Icon type="calendar-week" size={1}/>
