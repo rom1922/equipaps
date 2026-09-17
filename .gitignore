@@ -23,6 +23,10 @@ app.config.timestamp_*.js
 # Temp
 gitignore
 
+# Base élèves synchronisée (annuaire PDM, données personnelles) : jamais commitée
+data/
+api/data/
+
 # System Files
 .DS_Store
 Thumbs.db

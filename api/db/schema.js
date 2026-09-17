@@ -35,3 +35,23 @@ export const hpaps = mysqlTable("hpaps", {
   pxx: varchar("pxx", { length: 10 }).notNull(),
   date: datetime("date").notNull(),
 });
+
+// Roster : base élèves factorisée depuis l'annuaire Pain de Mine (mineurs.json),
+// synchronisée en lecture seule (PDM reste le mainteneur). Remplace users.txt.
+// Clé = login portail `pxx` (varchar(10)), la MÊME identité que paps/hpaps/
+// resultats/users : les logins existants sont préservés verbatim (parité de
+// l'historique), les nouveaux (dont la promo 26) reçoivent un pxx dérivé unique.
+// Une rangée sans nom (prenom/nom NULL) est un login legacy conservé pour son
+// historique et son statut cotisant, non exposé à la recherche par nom.
+export const roster = mysqlTable("roster", {
+  pxx: varchar("pxx", { length: 10 }).notNull().primaryKey(),
+  prenom: varchar("prenom", { length: 128 }),
+  nom: varchar("nom", { length: 128 }),
+  email: varchar("email", { length: 255 }),
+  promo: varchar("promo", { length: 8 }),
+  photo_url: varchar("photo_url", { length: 512 }),
+  search_key: varchar("search_key", { length: 255 }),
+  cotisant: boolean("cotisant").notNull().default(false),
+  source_id: varchar("source_id", { length: 16 }),
+  synced_at: datetime("synced_at"),
+});

@@ -1,10 +1,10 @@
-import { createEffect, createResource, createSignal, For } from "solid-js";
+import { createEffect, createResource, createSignal, For, Show } from "solid-js";
 import { MetaProvider, Title } from "@solidjs/meta";
 import { Layout } from "../components/layout";
 import { useNavigate, useParams } from "@solidjs/router";
 import { BackButton, dateForDateTimeInputValue } from "../components/utils";
 import { User } from "../components/user"
-import { users } from "../res/users";
+import { RosterSearch } from "../components/rostersearch";
 
 async function fetchEvent(id) {
   const res = await fetch(`/api/event/${id}`);
@@ -19,7 +19,6 @@ export default function EventForm() {
   const [ev, { mutate, refetch }] = createResource(params.id, fetchEvent);
 
   const [name, setName] = createSignal("");
-  const [pxx, setPxx] = createSignal("");
   const [date, setDate] = createSignal("");
   const [paps, setPaps] = createSignal("");
   const [location, setLocation] = createSignal("");
@@ -75,16 +74,11 @@ export default function EventForm() {
     }
   };
 
-  const handleAddUser = (e) => {
-    e.preventDefault();
-    const u = pxx();
-    if (!users.includes(u)) {
-      setStatus("Mineur inconnu, merci de bien renseigner l'identifiant du portail.");
-      return;
-    }
-    if (pxxs().includes(u)) return;
-    setPxxs(pxxs => [...pxxs, u]);
-    setPxx("");
+  const addUser = (r) => {
+    if (!r?.pxx) return;
+    if (pxxs().includes(r.pxx)) return;
+    setPxxs(pxxs => [...pxxs, r.pxx]);
+    setStatus("");
   };
 
   const handleRemove = async (e) => {
@@ -214,21 +208,7 @@ export default function EventForm() {
             </div>
 
             <div class="flex flex-col gap-3">
-              <input
-                type="text"
-                placeholder="XXnomdefamille (comme sur le portail)"
-                value={pxx()}
-                onInput={e => setPxx(e.target.value)}
-                onSubmit={handleAddUser}
-                class="border rounded p-2 w-full"
-                list="autocomplete-list"
-              />
-              <datalist id="autocomplete-list">
-                {users.map(word => (
-                  <option value={word} />
-                ))}
-              </datalist>
-              <button onClick={handleAddUser} class="bg-vf text-white rounded p-2 font-bold">ajouter aux PAPS</button>
+              <RosterSearch onSelect={addUser} placeholder="Ajouter un élève par son nom" />
             </div>
           </div>
 

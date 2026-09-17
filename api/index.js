@@ -4,8 +4,8 @@ import mysql from "mysql2/promise";
 import * as schema from "./db/schema.js";
 import dotenv from "dotenv";
 import { and, eq, gte } from "drizzle-orm";
-import fs from "fs";
 import jsonwebtoken from "jsonwebtoken";
+import { normSearch } from "./lib/normalize.js";
 
 dotenv.config();
 
@@ -46,14 +46,21 @@ async function generateTableId(table) {
   }
 }
 
-const usersTable = fs.readFileSync("./api/users.txt", "utf-8")
-  .split("\n")
-  .map(line => line.trim())
-  .filter(line => line.length > 0)
-  .map(line => ({
-    pxx: line.replace("*", ""),
-    cotisant: line.endsWith("*"),
-  }));
+// Base élèves = table `roster` (sync lecture seule depuis l'annuaire PDM
+// mineurs.json, cf. api/scripts/sync-roster.js). Remplace users.txt. L'identité
+// reste le login portail `pxx`. Chargée en mémoire au boot (comme l'ancien
+// users.txt) ; après un re-sync, on redémarre le service pour la recharger.
+async function loadRoster() {
+  try {
+    return await db.select().from(schema.roster);
+  } catch (err) {
+    console.error("roster indisponible (table absente ? lancer sync-roster) :", err.message);
+    return [];
+  }
+}
+let roster = await loadRoster();
+let rosterByPxx = new Map(roster.map(r => [r.pxx, r]));
+console.log(`roster chargé : ${roster.length} élèves (${roster.filter(r => r.search_key).length} recherchables)`);
 
 const eventPasswordHashed = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(process.env.EVENT_PASSWORD || ""));
 const eventPasswordHashHex = Array.from(new Uint8Array(eventPasswordHashed)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -186,7 +193,7 @@ async function getEventUsers(id) {
           .from(schema.resultats)
           .where(eq(schema.resultats.pxx, user.pxx))
           .then(r => r.length),
-        cotisant: usersTable.find(u => u.pxx === user.pxx)?.cotisant || false,
+        cotisant: rosterByPxx.get(user.pxx)?.cotisant || false,
         date: new Date(user.date)
       }
     }
@@ -327,6 +334,23 @@ app.get("/api/event/:id", actualizeResults, async (req, res) => {
   res.status(200).json(event);
 });
 
+// Recherche floue par nom sur le roster (même approche que Pain de Mine).
+// Surface PUBLIQUE : ne renvoie que ce qu'il faut pour choisir et lever les
+// homonymes (nom + login + promo), jamais l'email ni le téléphone (RGPD).
+app.get("/api/roster/search", (req, res) => {
+  const q = normSearch(req.query.q || "");
+  if (q.length < 2) return res.json([]);
+  const out = [];
+  for (const r of roster) {
+    if (!r.search_key) continue;
+    if (r.search_key.includes(q) || q.includes(r.search_key.split(" ")[0])) {
+      out.push({ prenom: r.prenom, nom: r.nom, pxx: r.pxx, promo: r.promo });
+      if (out.length >= 40) break;
+    }
+  }
+  res.json(out.slice(0, 8));
+});
+
 app.post("/api/paps", authenticateJWT, async (req, res) => {
   const { eid, pxx } = req.body;
   const date = new Date();
@@ -347,7 +371,7 @@ app.post("/api/paps", authenticateJWT, async (req, res) => {
     return;
   }
 
-  if (usersTable.find(u => u.pxx === pxx) == null) {
+  if (!rosterByPxx.has(pxx)) {
     res.status(400).json({ success: false, message: "Mineur inconnu" });
     return;
   }

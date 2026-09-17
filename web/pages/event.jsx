@@ -4,7 +4,7 @@ import { MetaProvider, Title } from "@solidjs/meta";
 import { Layout } from "../components/layout";
 import { User } from "../components/user"
 
-import { users } from "../res/users";
+import { RosterSearch } from "../components/rostersearch";
 import { BackButton, LinkButton } from "../components/utils";
 import { Icon } from "../components/icons";
 
@@ -27,18 +27,14 @@ export async function fetchEvent(id) {
 export default function EventPage() {
   const params = useParams();
   const [ev, { mutate, refetch }] = createResource(params.id, fetchEvent);
-  const [pxx, setPxx] = createSignal("");
+  const [selected, setSelected] = createSignal(null);
   const [status, setStatus] = createSignal("");
-
-  createEffect(() => {
-    setPxx(pxx().toLocaleLowerCase())
-  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (!users.includes(pxx())) {
-        setStatus("Mineur inconnu, merci de bien renseigner l'identifiant du portail.");
+      if (!selected()) {
+        setStatus("Choisis ton nom dans la liste.");
         return;
       }
       var res = await (await fetch("/api/paps", {
@@ -49,7 +45,7 @@ export default function EventPage() {
         },
         body: JSON.stringify({
           eid: params.id,
-          pxx: pxx(),
+          pxx: selected().pxx,
         }),
       })).json();
       if (res.success === false) {
@@ -122,21 +118,17 @@ export default function EventPage() {
                 N'hésite pas à t'inscrire même s'il ne reste plus de place, il y a souvent des désistements.<br/>
                 <span><b>Critères de priorité :</b> cotisants, puis nombre de sorties effectuées, puis ordre d'inscription.</span>
                 <form onSubmit={handleSubmit} class="mt-2 flex flex-col gap-3">
-                  <input
-                    type="text"
-                    placeholder="XXnomdefamille (comme sur le portail)"
-                    value={pxx()}
-                    onInput={e => setPxx(e.target.value)}
-                    required
-                    class="border rounded p-2 w-full"
-                    list="autocomplete-list"
+                  <RosterSearch
+                    onSelect={r => { setSelected(r); setStatus(""); }}
+                    onInput={() => setSelected(null)}
+                    placeholder="Ton nom (comme sur le portail)"
                   />
-                  <datalist id="autocomplete-list">
-                    {users.map(word => (
-                      <option value={word} />
-                    ))}
-                  </datalist>
-                  <button type="submit" class="bg-vf text-white rounded p-2 font-bold">PAPS</button>
+                  <Show when={selected()}>
+                    <div class="text-sm text-gray-700">
+                      Inscription de <b>{selected().prenom} {selected().nom}</b> (P{selected().promo} · {selected().pxx})
+                    </div>
+                  </Show>
+                  <button type="submit" disabled={!selected()} class="bg-vf text-white rounded p-2 font-bold disabled:opacity-50">PAPS</button>
                 </form>
               </Show>
             </Show>
