@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import { and, eq, gte } from "drizzle-orm";
 import jsonwebtoken from "jsonwebtoken";
 import { normSearch } from "./lib/normalize.js";
+import { rankRegistrants } from "./lib/draw.js";
 
 dotenv.config();
 
@@ -190,6 +191,14 @@ async function getEventUsers(id) {
     .where(eq(schema.paps.eid, id))
     .orderBy(schema.paps.date);
 
+  // Fenêtre prioritaire de 24 h à partir de l'ouverture de l'équi-PAPS (paps).
+  const ev = await db
+    .select()
+    .from(schema.events)
+    .where(eq(schema.events.id, id))
+    .then(r => r[0]);
+  const deadline = ev ? new Date(new Date(ev.paps).getTime() + 24 * 60 * 60 * 1000) : new Date(0);
+
   var possibleUsers = {};
   for (const user of users) {
     if (possibleUsers[user.pxx] === undefined) {
@@ -205,19 +214,9 @@ async function getEventUsers(id) {
     }
   }
 
-  const order = Object.keys(possibleUsers).sort((a, b) => {
-    // cotisants first
-    if (possibleUsers[a].cotisant && !possibleUsers[b].cotisant) return -1;
-    if (!possibleUsers[a].cotisant && possibleUsers[b].cotisant) return 1;
-    // then by sortiesEffectuees ascending
-    if (possibleUsers[a].sortiesEffectuees < possibleUsers[b].sortiesEffectuees) return -1;
-    if (possibleUsers[a].sortiesEffectuees > possibleUsers[b].sortiesEffectuees) return 1;
-    // then by date ascending
-    if (possibleUsers[a].date < possibleUsers[b].date) return -1;
-    if (possibleUsers[a].date > possibleUsers[b].date) return 1;
-  });
-
-  return order.map(user => ({pxx: user, ...possibleUsers[user]}))
+  // Tri par les règles verrouillées (fonction pure, cf. api/lib/draw.js).
+  const list = Object.keys(possibleUsers).map(pxx => ({ pxx, ...possibleUsers[pxx] }));
+  return rankRegistrants(list, deadline);
 }
 
 async function fetchEvent(id) {
@@ -242,12 +241,21 @@ async function closeEvent(event) {
     .then(r => r[0]?.closed);
   if (closed) return;
 
+  // On ne fige QUE les gagnants (les N premières places) : chaque place obtenue
+  // incrémente le compteur d'événements (sortie = atelier = 1 événement). La
+  // liste d'attente au-delà de N n'est pas comptée comme un événement suivi.
+  const evRow = await db
+    .select()
+    .from(schema.events)
+    .where(eq(schema.events.id, event.id))
+    .then(r => r[0]);
   const users = await getEventUsers(event.id);
+  const winners = users.slice(0, evRow?.participants ?? 0);
 
-  if (users.length > 0) {
+  if (winners.length > 0) {
     await db
       .insert(schema.resultats)
-      .values(users.map(user => ({ eid: event.id, pxx: user.pxx })));
+      .values(winners.map(user => ({ eid: event.id, pxx: user.pxx })));
   }
 
   await db

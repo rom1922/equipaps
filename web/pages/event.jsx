@@ -119,7 +119,13 @@ export default function EventPage() {
               <Show when={!ev().closed} fallback={<h3 class="text-xl font-bold mt-4 mb-2">PAPS fermé</h3>}>
                 <h3 class="text-xl font-bold mt-4 mb-2">équi-PAPS</h3>
                 N'hésite pas à t'inscrire même s'il ne reste plus de place, il y a souvent des désistements.<br/>
-                <span><b>Critères de priorité :</b> cotisants, puis nombre de sorties effectuées, puis ordre d'inscription.</span>
+                <span><b>Règles :</b> pendant les 24 premières heures, priorité au moins servi (nombre de sorties croissant), puis au cotisant à égalité, puis à l'ordre d'inscription. Après 24 h, premier arrivé premier servi.</span>
+                <Show
+                  when={new Date(new Date(ev().paps).getTime() + 24 * 60 * 60 * 1000) > new Date()}
+                  fallback={<div class="text-sm text-gray-600 mt-1">Phase « vrai PAPS » : premier arrivé, premier servi.</div>}
+                >
+                  <div class="text-sm text-gray-600 mt-1">Fenêtre prioritaire (24&nbsp;h en cours) : le tirage favorise le moins servi.</div>
+                </Show>
                 <form onSubmit={handleSubmit} class="mt-2 flex flex-col gap-3">
                   <RosterSearch
                     onSelect={r => { setSelected(r); setStatus(""); }}
