@@ -2,8 +2,7 @@ import { createEffect, createResource, createSignal, For, Show } from "solid-js"
 import { MetaProvider, Title } from "@solidjs/meta";
 import { Layout } from "../components/layout";
 import { useNavigate, useParams } from "@solidjs/router";
-import { BackButton, LinkButton, dateForDateTimeInputValue } from "../components/utils";
-import { User } from "../components/user"
+import { BackButton, LinkButton, dateForDateTimeInputValue, promoLabel } from "../components/utils";
 import { RosterSearch } from "../components/rostersearch";
 import { isAdmin, adminHeaders } from "../res/admin";
 
@@ -26,7 +25,12 @@ export default function EventForm() {
   const [participants, setParticipants] = createSignal("");
   const [description, setDescription] = createSignal("");
   const [pxxs, setPxxs] = createSignal([]);
+  const [names, setNames] = createSignal({});
   const [status, setStatus] = createSignal("");
+
+  const label = (u) => (u.prenom || u.nom)
+    ? `${u.prenom || ''} ${u.nom || ''}`.trim() + (u.promo ? ` (${promoLabel(u.promo)})` : '')
+    : u.pxx;
 
   createEffect(() => {
     if (ev()) {
@@ -37,6 +41,7 @@ export default function EventForm() {
       setParticipants(ev().participants);
       setDescription(ev().description);
       setPxxs(ev().users.map(user => user.pxx) || []);
+      setNames(Object.fromEntries((ev().users || []).map(u => [u.pxx, label(u)])));
     }
   })
 
@@ -74,6 +79,7 @@ export default function EventForm() {
 
   const addUser = (r) => {
     if (!r?.pxx) return;
+    setNames(n => ({ ...n, [r.pxx]: label(r) }));
     if (pxxs().includes(r.pxx)) return;
     setPxxs(pxxs => [...pxxs, r.pxx]);
     setStatus("");
@@ -183,14 +189,25 @@ export default function EventForm() {
               required
               class="border rounded p-2"
             />
-            <label>Inscrits (hors accompagnants) : cliquer sur un nom pour le retirer</label>
-            <div>
+            <label>Inscrits (hors accompagnants) : cliquer pour retirer. Les {participants() || 0} premiers sont retenus, le reste en attente.</label>
+            <div class="flex flex-col gap-1">
               <For each={pxxs()}>
                 {(user, i) => (
-                  <div class="inline-block cursor-pointer" onClick={() => setPxxs(pxxs => pxxs.filter(u => u !== user))}>
-                    <Show when={i() < participants()} fallback={<User user={{pxx: user}} state={0}/>}>
-                      <User user={{pxx: user}} state={1}/>
-                    </Show>
+                  <div
+                    onClick={() => setPxxs(pxxs => pxxs.filter(u => u !== user))}
+                    title="Cliquer pour retirer"
+                    classList={{
+                      'flex items-center gap-2 rounded px-2 py-1 cursor-pointer': true,
+                      'bg-vc/25': i() < participants(),
+                      'bg-black/5': i() >= participants(),
+                    }}
+                  >
+                    <span class="text-xs text-gray-500 w-5 text-right shrink-0">{i() + 1}</span>
+                    <span class="flex-grow text-sm truncate">{names()[user] || user}</span>
+                    <span class="text-xs shrink-0" classList={{ 'text-vf font-bold': i() < participants(), 'text-gray-500': i() >= participants() }}>
+                      {i() < participants() ? '✓ retenu' : 'en attente'}
+                    </span>
+                    <span class="text-gray-400 shrink-0">×</span>
                   </div>
                 )}
               </For>

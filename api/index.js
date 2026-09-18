@@ -202,13 +202,17 @@ async function getEventUsers(id) {
   var possibleUsers = {};
   for (const user of users) {
     if (possibleUsers[user.pxx] === undefined) {
+      const r = rosterByPxx.get(user.pxx);
       possibleUsers[user.pxx] = {
         sortiesEffectuees: await db
           .select()
           .from(schema.resultats)
           .where(eq(schema.resultats.pxx, user.pxx))
           .then(r => r.length),
-        cotisant: rosterByPxx.get(user.pxx)?.cotisant || false,
+        cotisant: r?.cotisant || false,
+        prenom: r?.prenom || null,
+        nom: r?.nom || null,
+        promo: r?.promo || null,
         date: new Date(user.date)
       }
     }

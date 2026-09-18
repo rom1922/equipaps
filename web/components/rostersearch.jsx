@@ -1,4 +1,5 @@
 import { createSignal, For, Show, onCleanup } from "solid-js";
+import { promoLabel } from "./utils";
 
 // Recherche floue par nom sur le roster (annuaire PDM), même approche que Pain
 // de Mine. L'élève tape son nom -> suggestions (nom + promo + login pour lever
@@ -54,7 +55,7 @@ export function RosterSearch(props) {
                 onClick={() => pick(r)}
               >
                 <span class="suggestion-name">{`${r.prenom || ""} ${r.nom || ""}`.trim()}</span>
-                <span class="suggestion-promo text-xs text-gray-500 ml-2">P{r.promo || "?"} · {r.pxx}</span>
+                <span class="suggestion-promo text-xs text-gray-500 ml-2">{promoLabel(r.promo) || "P?"} · {r.pxx}</span>
               </div>
             )}
           </For>

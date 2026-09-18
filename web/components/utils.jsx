@@ -5,6 +5,13 @@ import { createSignal } from "solid-js";
 
 export const mds = " · ";
 
+// Affichage d'une promo : « P26 » pour les promos numériques, sinon le code en
+// majuscules (« AST19 », « ISUP15 »), jamais « Past19 ».
+export function promoLabel(promo) {
+  if (!promo) return "";
+  return /^\d+$/.test(String(promo)) ? `P${promo}` : String(promo).toUpperCase();
+}
+
 export const dateForDateTimeInputValue = date => new Date(date.getTime() + new Date().getTimezoneOffset() * -60 * 1000).toISOString().slice(0, 19)
 
 export function timeAgo(date) {
