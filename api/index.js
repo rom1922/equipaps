@@ -236,6 +236,29 @@ async function fetchEvent(id) {
   return event;
 }
 
+app.post("/api/openevent", authenticateAdmin, async (req, res) => {
+  const { id } = req.body;
+  if (!id) {
+    res.status(400).json({ success: false, message: "ID manquant" });
+    return;
+  }
+  const event = await db
+    .select()
+    .from(schema.events)
+    .where(eq(schema.events.id, id))
+    .then(r => r[0]);
+  if (!event) {
+    res.status(404).json({ success: false, message: "Événement introuvable" });
+    return;
+  }
+  try {
+    await db.update(schema.events).set({ closed: false }).where(eq(schema.events.id, id));
+    res.status(200).json({ success: true, id });
+  } catch(err) {
+    res.status(500).send(err.toString());
+  }
+});
+
 async function closeEvent(event) {
 
   const closed = await db
