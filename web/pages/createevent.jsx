@@ -24,8 +24,8 @@ export default function EventForm() {
         headers: adminHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           name: name(),
-          date: date(),
-          paps: paps(),
+          date: new Date(date()).toISOString(),
+          paps: new Date(paps()).toISOString(),
           location: location(),
           participants: participants(),
           description: description(),

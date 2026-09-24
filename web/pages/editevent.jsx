@@ -54,8 +54,8 @@ export default function EventForm() {
         body: JSON.stringify({
           id: params.id,
           name: name(),
-          date: date(),
-          paps: paps(),
+          date: new Date(date()).toISOString(),
+          paps: new Date(paps()).toISOString(),
           location: location(),
           participants: participants(),
           description: description(),
