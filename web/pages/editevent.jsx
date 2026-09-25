@@ -111,18 +111,13 @@ export default function EventForm() {
   const openEvent = async (e) => {
     e.preventDefault();
     try {
-      const password = prompt("Entrez le mot de passe pour rouvrir l'événement :");
-      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password || ""));
-      const hashHex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
-
-      var res = await (await fetch("/api/openevent", {
+      const r = await fetch("/api/openevent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: params.id,
-          hash: hashHex
-        }),
-      })).json();
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ id: params.id }),
+      });
+      if (r.status === 401) { setStatus("Session expirée. Reconnecte-toi dans l'espace bureau."); return; }
+      var res = await r.json();
 
       if (res.success === false) {
         setStatus(res.message || "Erreur lors de la réouverture de l'événement. Merci de réessayer.");
