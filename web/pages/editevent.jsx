@@ -108,6 +108,35 @@ export default function EventForm() {
     }
   };
 
+  const openEvent = async (e) => {
+    e.preventDefault();
+    try {
+      const password = prompt("Entrez le mot de passe pour rouvrir l'événement :");
+      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password || ""));
+      const hashHex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+      var res = await (await fetch("/api/openevent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: params.id,
+          hash: hashHex
+        }),
+      })).json();
+
+      if (res.success === false) {
+        setStatus(res.message || "Erreur lors de la réouverture de l'événement. Merci de réessayer.");
+        return;
+      } else {
+        setStatus("Événement rouvert !");
+        navigate(`/event/${res.id}`);
+      }
+    } catch (err) {
+      console.log(err);
+      setStatus("Erreur lors de l'enregistrement.");
+    }
+  }
+
   const closeEvent = async (e) => {
     e.preventDefault();
     try {
@@ -221,8 +250,11 @@ export default function EventForm() {
           <button type="submit" class="bg-vf text-white rounded p-2 font-bold cursor-pointer">Enregistrer</button>
         </form>
 
-        <Show when={ev() && new Date() > new Date(ev().paps)}>
+        <Show when={ev() && new Date() > new Date(ev().paps) && !ev().closed}>
           <button type="submit" class="bg-black/60 text-white rounded p-2 mb-1 font-bold cursor-pointer" onClick={closeEvent}>Fermer le PAPS</button>
+        </Show>
+        <Show when={ev() && ev().closed}>
+          <button type="submit" class="bg-green-600 text-white rounded p-2 mb-1 font-bold cursor-pointer" onClick={openEvent}>Rouvrir le PAPS</button>
         </Show>
 
         <button type="submit" class="bg-rf text-white rounded p-2 font-bold cursor-pointer" onClick={handleRemove}>Supprimer l'évènement</button>
