@@ -40,3 +40,12 @@ export function adminLogout() { setAdminToken(""); }
 export function adminHeaders(extra = {}) {
   return adminToken() ? { ...extra, authorization: adminToken() } : { ...extra };
 }
+
+// fetch admin : porte le jeton et PURGE la session si elle a expiré côté
+// serveur (401) — la pastille disparaît au lieu de laisser croire à une
+// session valide. Pour un upload multipart, ne pas mettre de Content-Type.
+export async function adminFetch(url, opts = {}) {
+  const res = await fetch(url, { ...opts, headers: adminHeaders(opts.headers || {}) });
+  if (res.status === 401) setAdminToken("");
+  return res;
+}

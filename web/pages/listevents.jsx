@@ -1,9 +1,10 @@
-import { createResource, For, Match, Show, Switch } from "solid-js";
+import { createResource, For, Show } from "solid-js";
 import { MetaProvider, Title } from "@solidjs/meta";
 import { Layout } from "../components/layout";
 import { BackButton, Link, LinkButton, mds } from "../components/utils";
 import { Icon } from "../components/icons";
 import { isAdmin } from "../res/admin";
+import { PhaseChip } from "../components/phase";
 
 async function fetchEvents() {
   const res = await fetch("/api/events");
@@ -57,15 +58,13 @@ export default function ListEventsPage() {
                   <span>{mds}</span>
                   <Icon type="calendar-week" size={1}/>
                   {ev.date.toLocaleString()}</div>
-                <div class="text-gray-600 flex flex-row">
+                <div class="text-gray-600 flex flex-row items-center gap-1 flex-wrap">
                   {ev.participants} places
                   {mds}
-                  <Switch>
-                    <Match when={ev.closed}>PAPS fermé</Match>
-                    <Match when={ev.paps > new Date()}>Ouverture du PAPS le {ev.paps.toLocaleString()}</Match>
-                    <Match when={ev.places > 0}>{ev.places} restantes</Match>
-                    <Match when={ev.places <= 0}>Equi-PAPS ouvert</Match>
-                  </Switch>
+                  <PhaseChip ev={ev}/>
+                  <Show when={!ev.closed && ev.paps <= new Date()}>
+                    <span>{ev.places > 0 ? `${ev.places} restante${ev.places > 1 ? "s" : ""}` : "complet — liste d'attente ouverte"}</span>
+                  </Show>
                 </div>
                 <Show when={ev.description}>
                   <div class="text-sm mt-2">{ev.description}</div>

@@ -55,3 +55,11 @@ export const roster = mysqlTable("roster", {
   source_id: varchar("source_id", { length: 16 }),
   synced_at: datetime("synced_at"),
 });
+
+// Paramètres applicatifs (cle/valeur). Usage actuel : la clé d'API du portail
+// des élèves, déposée depuis l'UI admin (write-only : jamais renvoyée en clair).
+export const parametres = mysqlTable("parametres", {
+  cle: varchar("cle", { length: 64 }).notNull().primaryKey(),
+  valeur: text("valeur").notNull(),
+  maj_at: datetime("maj_at").notNull(),
+});

@@ -4,6 +4,8 @@ import { MetaProvider, Title } from "@solidjs/meta";
 import { Layout } from "../components/layout";
 
 import { RosterSearch } from "../components/rostersearch";
+import { PhaseChip, Countdown } from "../components/phase";
+import { ConfirmDialog } from "../components/confirmdialog";
 import { isAdmin } from "../res/admin";
 import { BackButton, LinkButton, promoLabel } from "../components/utils";
 import { Icon } from "../components/icons";
@@ -29,14 +31,26 @@ export default function EventPage() {
   const [ev, { mutate, refetch }] = createResource(params.id, fetchEvent);
   const [selected, setSelected] = createSignal(null);
   const [status, setStatus] = createSignal("");
+  const [showConfirm, setShowConfirm] = createSignal(false);
+  const [showExternal, setShowExternal] = createSignal(false);
+  const [extPrenom, setExtPrenom] = createSignal("");
+  const [extNom, setExtNom] = createSignal("");
+  const [extEmail, setExtEmail] = createSignal("");
 
+  // Double validation : le premier clic ouvre la modale d'engagement, le
+  // second seul écrit. Corrige le missclick, et rappelle l'engagement.
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selected()) {
+      setStatus("Choisis ton nom dans la liste.");
+      return;
+    }
+    setShowConfirm(true);
+  };
+
+  const doPaps = async () => {
+    setShowConfirm(false);
     try {
-      if (!selected()) {
-        setStatus("Choisis ton nom dans la liste.");
-        return;
-      }
       var res = await (await fetch("/api/paps", {
         method: "POST",
         headers: {
@@ -60,6 +74,53 @@ export default function EventPage() {
     }
   };
 
+  // « Mon nom n'apparaît pas » : identité déclarée, enregistrée sous réserve de
+  // validation par le bureau. La cotisation n'est JAMAIS déclarée par l'élève :
+  // elle sera détectée par la réconciliation HelloAsso côté serveur.
+  const submitExternal = async (e) => {
+    e.preventDefault();
+    if (!extPrenom().trim() || !extNom().trim()) {
+      setStatus("Prénom et nom requis.");
+      return;
+    }
+    setStatus("Enregistrement...");
+    try {
+      const r = await (await fetch("/api/roster/external", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prenom: extPrenom().trim(),
+          nom: extNom().trim(),
+          email: extEmail().trim(),
+        }),
+      })).json();
+      if (r.success === false) {
+        setStatus(r.message || "Erreur lors de l'enregistrement.");
+        return;
+      }
+      var res = await (await fetch("/api/paps", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "authorization": token(),
+        },
+        body: JSON.stringify({
+          eid: params.id,
+          pxx: r.pxx,
+        }),
+      })).json();
+      if (res.success === false) {
+        setStatus(res.message || "Erreur lors de l'inscription.");
+        return;
+      }
+      setStatus(`C'est noté ${extPrenom().trim()} ! Ton inscription est enregistrée, le bureau validera ton profil.`);
+      setShowExternal(false);
+      refetch();
+    } catch (err) {
+      setStatus("Erreur lors de l'enregistrement.");
+    }
+  };
+
   return (
     <Layout floating={true}>
       <MetaProvider>
@@ -73,6 +134,7 @@ export default function EventPage() {
           <>
             <div class="mb-2">
               <h2 class="text-2xl font-bold">{ev().name}</h2>
+              <div class="mt-1"><PhaseChip ev={ev()}/></div>
               <Show when={isAdmin()}>
                 <LinkButton href={"/editevent/" + ev().id}>Modifier l'événement</LinkButton>
               </Show>
@@ -96,15 +158,22 @@ export default function EventPage() {
             
             <Show 
               when={new Date(ev().paps) < new Date()}
-              fallback={<div class=" p-4 bg-yellow-100 border border-yellow-300 rounded">Ouverture de l'équi-PAPS le <b>{new Date(ev().paps).toLocaleString()}</b>
-              </div>}>
+              fallback={
+                <div class="p-4 bg-yellow-100 border border-yellow-300 rounded flex flex-col gap-1">
+                  <div>Ouverture de l'équi-PAPS le <b>{new Date(ev().paps).toLocaleString()}</b></div>
+                  <div class="text-sm text-gray-700">dans <b><Countdown at={ev().paps}/></b></div>
+                </div>
+              }>
 
               <div class="mb-2 p-2 rounded bg-black/5 text-sm text-gray-700">
                 <Show
                   when={new Date(new Date(ev().paps).getTime() + 24 * 60 * 60 * 1000) > new Date()}
                   fallback={<div><b>Vrai PAPS</b> — premier arrivé, premier servi.</div>}
                 >
-                  <div><b>Fenêtre prioritaire (24&nbsp;h)</b> — le tirage favorise le moins servi.</div>
+                  <div>
+                    <b>Fenêtre prioritaire (24&nbsp;h)</b> — le tirage favorise le moins servi.
+                    Il reste <b><Countdown at={new Date(new Date(ev().paps).getTime() + 24 * 60 * 60 * 1000)}/></b>.
+                  </div>
                 </Show>
                 <div class="text-xs text-gray-600 mt-0.5">
                   Ordre de priorité : moins de sorties d'abord, puis le cotisant à égalité, puis l'ordre d'inscription. Passé 24&nbsp;h, premier arrivé premier servi.
@@ -177,9 +246,37 @@ export default function EventPage() {
                     </div>
                   </Show>
                   <button type="submit" disabled={!selected()} class="bg-vf text-white rounded p-2 font-bold disabled:opacity-50">PAPS</button>
+                  <button
+                    type="button"
+                    onClick={() => setShowExternal(v => !v)}
+                    class="text-xs text-gray-600 underline underline-offset-2 cursor-pointer self-start"
+                  >Mon nom n'apparaît pas dans la liste ?</button>
+                  <p class="text-xs text-gray-500">
+                    L'inscription est un engagement : on ne peut pas se désinscrire soi-même.
+                    En cas d'empêchement, préviens le bureau par mail (<a class="underline" href="mailto:bureaudesarts.minesparis@gmail.com">bureaudesarts.minesparis@gmail.com</a>).
+                  </p>
                 </form>
+                <Show when={showExternal()}>
+                  <form onSubmit={submitExternal} class="mt-3 flex flex-col gap-2 border rounded p-3 bg-black/5">
+                    <p class="text-xs text-gray-600">Ton profil sera validé par le bureau.</p>
+                    <input required type="text" placeholder="Prénom" class="border rounded p-2" value={extPrenom()} onInput={e => setExtPrenom(e.target.value)}/>
+                    <input required type="text" placeholder="Nom" class="border rounded p-2" value={extNom()} onInput={e => setExtNom(e.target.value)}/>
+                    <input type="email" placeholder="Email (facultatif)" class="border rounded p-2" value={extEmail()} onInput={e => setExtEmail(e.target.value)}/>
+                    <button type="submit" class="bg-vf text-white rounded p-2 font-bold cursor-pointer">M'inscrire quand même</button>
+                  </form>
+                </Show>
               </Show>
             </Show>
+            <ConfirmDialog
+              open={showConfirm()}
+              title="Tu t'engages !"
+              confirmLabel="Je m'engage et je m'inscris"
+              onCancel={() => setShowConfirm(false)}
+              onConfirm={doPaps}
+            >
+              <p>Inscription de <b>{selected()?.prenom} {selected()?.nom}</b> à <b>{ev().name}</b>.</p>
+              <p>En validant, tu t'engages à participer à cet événement. En cas d'empêchement, préviens le bureau par mail dès que possible : <a class="underline" href="mailto:bureaudesarts.minesparis@gmail.com">bureaudesarts.minesparis@gmail.com</a>.</p>
+            </ConfirmDialog>
             {status() && <div class="mt-2 text-center">{status()}</div>}
           </>
         )}

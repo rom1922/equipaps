@@ -1,9 +1,28 @@
-import { Match, Switch } from "solid-js";
+import { Match, Show, Switch } from "solid-js";
 import { Link } from "./utils";
+import { isAdmin, adminLogout } from "../res/admin";
+
+// Pastille d'état admin : visible sur TOUTES les pages quand la session
+// bureau est ouverte — plus de doute « suis-je connecté ? ». Un clic la quitte.
+function AdminBadge() {
+  return (
+    <Show when={isAdmin()}>
+      <div class="fixed top-2 right-2 z-50 flex items-center gap-2 bg-vf text-white text-xs font-bold rounded-none px-3 py-1.5">
+        <span>Bureau connecté</span>
+        <button
+          onClick={() => adminLogout()}
+          class="underline underline-offset-2 cursor-pointer"
+          title="Quitter la session bureau"
+        >quitter</button>
+      </div>
+    </Show>
+  );
+}
 
 export function Layout(props) {
   return (
     <>
+      <AdminBadge/>
       <div class="flex-grow overflow-y-scroll flex flex-col bg-d bg-[radial-gradient(#0006_1px,transparent_1px)] [background-size:16px_16px] bg-fixed">
         <Switch>
           <Match when={props.floating}>

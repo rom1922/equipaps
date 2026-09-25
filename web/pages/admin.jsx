@@ -66,11 +66,13 @@ export default function AdminPage() {
               <Stat label="Inscriptions" value={summary().inscriptions}/>
               <Stat label="Cotisants" value={summary().cotisants}/>
               <Stat label="Élèves" value={summary().roster}/>
+              <Show when={summary().pending > 0}><Stat label="À rattacher" value={summary().pending}/></Show>
             </div>
           </Show>
           <div class="flex flex-col gap-2 mt-2">
             <LinkButton href="/createevent">Créer un événement</LinkButton>
             <LinkButton href="/listevents">Gérer les événements</LinkButton>
+            <LinkButton href="/eleve">Élèves & cotisants</LinkButton>
           </div>
           <button
             onClick={() => adminLogout()}
