@@ -24,6 +24,7 @@ export default function EventForm() {
   const [location, setLocation] = createSignal("");
   const [participants, setParticipants] = createSignal("");
   const [description, setDescription] = createSignal("");
+  const [type, setType] = createSignal("sortie");
   const [pxxs, setPxxs] = createSignal([]);
   const [names, setNames] = createSignal({});
   const [status, setStatus] = createSignal("");
@@ -40,6 +41,7 @@ export default function EventForm() {
       setLocation(ev().location);
       setParticipants(ev().participants);
       setDescription(ev().description);
+      setType(ev().type === "atelier" ? "atelier" : "sortie");
       setPxxs(ev().users.map(user => user.pxx) || []);
       setNames(Object.fromEntries((ev().users || []).map(u => [u.pxx, label(u)])));
     }
@@ -58,6 +60,7 @@ export default function EventForm() {
           paps: new Date(paps()).toISOString(),
           location: location(),
           participants: participants(),
+          type: type(),
           description: description(),
           users: pxxs(),
         }),
@@ -174,6 +177,12 @@ export default function EventForm() {
             required
             class="border rounded p-2"
           />
+          <label>Type d'événement</label>
+          <select value={type()} onInput={e => setType(e.target.value)} class="border rounded p-2">
+            <option value="sortie">Sortie</option>
+            <option value="atelier">Atelier</option>
+          </select>
+          <span class="text-xs text-gray-500">Le tirage équilibre séparément les sorties et les ateliers.</span>
           <input
             type="datetime-local"
             value={date()}

@@ -4,7 +4,7 @@ import { Layout } from "../components/layout";
 import { BackButton, Link, LinkButton, mds } from "../components/utils";
 import { Icon } from "../components/icons";
 import { isAdmin } from "../res/admin";
-import { PhaseChip } from "../components/phase";
+import { PhaseChip, TypeChip } from "../components/phase";
 
 async function fetchEvents() {
   const res = await fetch("/api/events");
@@ -60,6 +60,7 @@ export default function ListEventsPage() {
                   {ev.date.toLocaleString()}</div>
                 <div class="text-gray-600 flex flex-row items-center gap-1 flex-wrap">
                   {ev.participants} places
+                  <TypeChip ev={ev}/>
                   {mds}
                   <PhaseChip ev={ev}/>
                   <Show when={!ev.closed && ev.paps <= new Date()}>

@@ -14,6 +14,7 @@ export default function EventForm() {
   const [location, setLocation] = createSignal("");
   const [participants, setParticipants] = createSignal("");
   const [description, setDescription] = createSignal("");
+  const [type, setType] = createSignal("sortie");
   const [status, setStatus] = createSignal("");
 
   const handleSubmit = async (e) => {
@@ -28,6 +29,7 @@ export default function EventForm() {
           paps: new Date(paps()).toISOString(),
           location: location(),
           participants: participants(),
+          type: type(),
           description: description(),
         }),
       });
@@ -63,6 +65,12 @@ export default function EventForm() {
             required
             class="border rounded p-2"
           />
+          <label>Type d'événement</label>
+          <select value={type()} onInput={e => setType(e.target.value)} class="border rounded p-2">
+            <option value="sortie">Sortie</option>
+            <option value="atelier">Atelier</option>
+          </select>
+          <span class="text-xs text-gray-500">Le tirage équilibre séparément les sorties et les ateliers : le compteur comparé est celui du type de l'événement.</span>
           <input
             type="datetime-local"
             value={date()}

@@ -4,7 +4,7 @@ import { MetaProvider, Title } from "@solidjs/meta";
 import { Layout } from "../components/layout";
 
 import { RosterSearch } from "../components/rostersearch";
-import { PhaseChip, Countdown } from "../components/phase";
+import { PhaseChip, Countdown, TypeChip } from "../components/phase";
 import { ConfirmDialog } from "../components/confirmdialog";
 import { isAdmin } from "../res/admin";
 import { BackButton, LinkButton, promoLabel } from "../components/utils";
@@ -134,7 +134,7 @@ export default function EventPage() {
           <>
             <div class="mb-2">
               <h2 class="text-2xl font-bold">{ev().name}</h2>
-              <div class="mt-1"><PhaseChip ev={ev()}/></div>
+              <div class="mt-1 flex flex-row gap-2 items-center"><PhaseChip ev={ev()}/><TypeChip ev={ev()}/></div>
               <Show when={isAdmin()}>
                 <LinkButton href={"/editevent/" + ev().id}>Modifier l'événement</LinkButton>
               </Show>
@@ -217,7 +217,9 @@ export default function EventPage() {
                               </span>
                               <span class="text-xs text-gray-500">
                                 <Show when={user.cotisant}><span class="text-vf font-semibold">cotisant</span> · </Show>
-                                {user.sortiesEffectuees} sortie{user.sortiesEffectuees > 1 ? 's' : ''} obtenue{user.sortiesEffectuees > 1 ? 's' : ''}
+                                <Show when={ev().type === 'atelier'} fallback={<span>{user.obtentions} sortie{user.obtentions > 1 ? 's' : ''} obtenue{user.obtentions > 1 ? 's' : ''}</span>}>
+                  <span>{user.obtentions} atelier{user.obtentions > 1 ? 's' : ''} obtenu{user.obtentions > 1 ? 's' : ''}</span>
+                </Show>
                               </span>
                             </div>
                             <Show when={retenu} fallback={<span class="text-xs text-gray-500 shrink-0">en attente</span>}>

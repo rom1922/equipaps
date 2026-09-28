@@ -1,11 +1,12 @@
-// Tests des règles de tirage (node --test). Fonction pure, aucune DB.
+// Tests des règles de tirage. `obtentions` = participations du même type
+// que l'événement, dans le référentiel de comptage courant (calcul côté API). (node --test). Fonction pure, aucune DB.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rankRegistrants, winners } from "./draw.js";
 
 const deadline = new Date(1000); // paps + 24 h, en ms pour la lisibilité
 const u = (pxx, sorties, cotisant, tMs) => ({
-  pxx, sortiesEffectuees: sorties, cotisant, date: new Date(tMs),
+  pxx, obtentions: sorties, cotisant, date: new Date(tMs),
 });
 const ids = (arr) => arr.map((x) => x.pxx);
 

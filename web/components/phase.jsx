@@ -58,3 +58,20 @@ export function PhaseChip(props) {
     </span>
   );
 }
+
+// Badge de type : chaque événement est une « sortie » ou un « atelier »,
+// et le tirage équilibre séparément les deux compteurs (un élève très servi
+// en ateliers n'est pas défavorisé sur les sorties, et inversement).
+export function TypeChip(props) {
+  const atelier = () => props.ev?.type === "atelier";
+  return (
+    <span class="inline-flex items-center text-xs font-semibold rounded-none px-2 py-0.5 whitespace-nowrap"
+      classList={{
+        "bg-indigo-100 text-indigo-800": atelier(),
+        "bg-gray-100 text-gray-700": !atelier(),
+      }}
+    >
+      {atelier() ? "Atelier" : "Sortie"}
+    </span>
+  );
+}

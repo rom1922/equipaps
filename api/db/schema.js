@@ -8,6 +8,9 @@ export const events = mysqlTable("events", {
   location: varchar("location", { length: 255 }).notNull(),
   participants: int("participants").notNull().default(0),
   closed: boolean("closed").notNull().default(false),
+  // Type de l'événement : "sortie" ou "atelier". Le tirage compare les inscrits
+  // sur leur compteur de participations du MÊME type (api/index.js getEventUsers).
+  type: varchar("type", { length: 16 }).notNull().default("sortie"),
   description: text("description"),
 });
 

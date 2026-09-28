@@ -76,6 +76,25 @@ async function reloadRoster() {
 }
 await reloadRoster();
 
+// Référentiel de comptage : date à partir de laquelle les participations
+// comptent dans le tirage (clé `comptage_depuis` de la table parametres).
+// null = tout l'historique compte. Changer cette date NE SUPPRIME RIEN :
+// elle ne déplace que la borne basse du compteur (remise à l'équilibre
+// annuelle), paps/hpaps/resultats restent intacts.
+const CLE_PARAM_COMPTAGE = "comptage_depuis";
+async function getComptageDepuis() {
+  try {
+    const row = await db.select().from(schema.parametres)
+      .where(eq(schema.parametres.cle, CLE_PARAM_COMPTAGE)).then(r => r[0]);
+    if (!row) return null;
+    const d = new Date(row.valeur);
+    return isNaN(d) ? null : d;
+  } catch (err) {
+    console.error("parametres indisponible :", err.message);
+    return null;
+  }
+}
+
 // Upload admin en mémoire (jamais écrit sur disque), 2 Mo max.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 
@@ -107,6 +126,7 @@ const authenticateAdmin = (req, res, next) => {
 
 app.post("/api/createevent", authenticateAdmin, async (req, res) => {
   const { name, location, participants, description } = req.body;
+  const type = req.body.type === "atelier" ? "atelier" : "sortie";
 
   const date = new Date(req.body.date);
   const paps = new Date(req.body.paps);
@@ -114,12 +134,13 @@ app.post("/api/createevent", authenticateAdmin, async (req, res) => {
 
   await db
     .insert(schema.events)
-    .values({ id, name, date, paps, location, participants, description });
+    .values({ id, name, date, paps, location, participants, type, description });
   res.status(201).json({ success: true, id });
 });
 
 app.post("/api/editevent", authenticateAdmin, async (req, res) => {
   const { id, name, location, participants, description, users } = req.body;
+  const type = req.body.type === "atelier" ? "atelier" : "sortie";
   const date = new Date(req.body.date);
   const paps = new Date(req.body.paps);
   if (!id) {
@@ -137,7 +158,7 @@ app.post("/api/editevent", authenticateAdmin, async (req, res) => {
   }
   await db
     .update(schema.events)
-    .set({ name, date, paps, location, participants, description })
+    .set({ name, date, paps, location, participants, type, description })
     .where(eq(schema.events.id, id));
   // delete all paps for this event
   const eventUsers = await getEventUsers(id);
@@ -215,16 +236,36 @@ async function getEventUsers(id) {
     .then(r => r[0]);
   const deadline = ev ? new Date(new Date(ev.paps).getTime() + 24 * 60 * 60 * 1000) : new Date(0);
 
+  // Compteur d'obtentions de chaque inscrit : participations passées du MÊME
+  // type que cet événement (sortie vs atelier), dans le référentiel de
+  // comptage courant (events.date >= comptage_depuis ; null = tout compte).
+  // Une seule requête groupée pour tous les inscrits, au lieu d'une par tête.
+  const comptageDepuis = await getComptageDepuis();
+  const pxxList = users.map(u => u.pxx);
+  let counts = new Map();
+  if (pxxList.length > 0) {
+    const placeholders = pxxList.map(() => "?").join(", ");
+    const args = [...pxxList, ev?.type === "atelier" ? "atelier" : "sortie"];
+    let dateFilter = "";
+    if (comptageDepuis) {
+      dateFilter = " AND e.date >= ?";
+      args.push(comptageDepuis);
+    }
+    const [rows] = await pool.query(
+      `SELECT r.pxx, COUNT(*) AS c FROM resultats r JOIN events e ON e.id = r.eid
+       WHERE r.pxx IN (${placeholders}) AND e.type = ?${dateFilter}
+       GROUP BY r.pxx`,
+      args
+    );
+    counts = new Map(rows.map(r => [r.pxx, Number(r.c)]));
+  }
+
   var possibleUsers = {};
   for (const user of users) {
     if (possibleUsers[user.pxx] === undefined) {
       const r = rosterByPxx.get(user.pxx);
       possibleUsers[user.pxx] = {
-        sortiesEffectuees: await db
-          .select()
-          .from(schema.resultats)
-          .where(eq(schema.resultats.pxx, user.pxx))
-          .then(r => r.length),
+        obtentions: counts.get(user.pxx) || 0,
         cotisant: r?.cotisant || false,
         prenom: r?.prenom || null,
         nom: r?.nom || null,
@@ -693,6 +734,37 @@ app.post("/api/admin/portail/key", authenticateAdmin, async (req, res) => {
     .values({ cle: CLE_PARAM_PORTAIL, valeur: cle, maj_at: maj })
     .onDuplicateKeyUpdate({ set: { valeur: cle, maj_at: maj } });
   res.json({ success: true, definie: true, dernier4: cle.slice(-4), maj_at: maj });
+});
+
+// --- Référentiel de comptage (remise à l'équilibre annuelle) ---
+// Date à partir de laquelle les participations passées comptent dans le
+// tirage. Ne supprime rien : les inscriptions et résultats historiques
+// restent en base, seule la borne basse du compteur bouge. Le bureau la
+// remonte typiquement une fois par an (rentrée) pour remettre les
+// compteurs à l'équilibre. Absente = tout l'historique compte.
+app.get("/api/admin/comptage", authenticateAdmin, async (req, res) => {
+  res.json({ success: true, depuis: await getComptageDepuis() });
+});
+
+app.post("/api/admin/comptage", authenticateAdmin, async (req, res) => {
+  const brut = req.body.depuis;
+  // null / vide : on retire le référentiel, tout l'historique recompte.
+  if (brut == null || brut === "") {
+    await db.delete(schema.parametres)
+      .where(eq(schema.parametres.cle, CLE_PARAM_COMPTAGE));
+    res.json({ success: true, depuis: null });
+    return;
+  }
+  const d = new Date(brut);
+  if (isNaN(d)) {
+    res.status(400).json({ success: false, message: "Date invalide." });
+    return;
+  }
+  const maj = new Date();
+  await db.insert(schema.parametres)
+    .values({ cle: CLE_PARAM_COMPTAGE, valeur: d.toISOString(), maj_at: maj })
+    .onDuplicateKeyUpdate({ set: { valeur: d.toISOString(), maj_at: maj } });
+  res.json({ success: true, depuis: d });
 });
 
 // Synchronise la base élèves depuis l'annuaire du portail. NON destructif :
