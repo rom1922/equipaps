@@ -89,6 +89,17 @@ test("promo : le nom complet d'une ancienne promo gagne quand même", () => {
   assert.deepEqual(px2(homonymes, "elena dupont"), ["25elena", "02elena"]);
 });
 
+test("limit Infinity : tout l'ordre, pas de troncature (table bureau)", () => {
+  const elenas = [
+    R("02elena", "Elena", "Dupont", "02"),
+    R("26elena", "Elena", "Martin", "26"),
+    R("25elena", "Elena", "Rossi", "25"),
+  ];
+  assert.equal(chercherEtudiants("elena", elenas).length, 3);
+  assert.equal(chercherEtudiants("elena", elenas, Infinity).length, 3);
+  assert.deepEqual(px2(elenas, "elena"), ["26elena", "25elena", "02elena"]);
+});
+
 test("rangées sans nom (legacy) écartées, jamais renvoyées", () => {
   const avecLegacy = [...roster, { pxx: "25xxxx", prenom: null, nom: null, search_key: null }];
   assert.ok(!px("romain").some(p => p === "25xxxx"));

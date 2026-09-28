@@ -8,7 +8,7 @@ import jsonwebtoken from "jsonwebtoken";
 import multer from "multer";
 import { normLogin, normSearch } from "./lib/normalize.js";
 import { rankRegistrants } from "./lib/draw.js";
-import { chercherEtudiants, scoreEtudiant, tokensNom } from "./lib/search.js";
+import { chercherEtudiants, tokensNom } from "./lib/search.js";
 import {
   loadCotisantsFromText, reconcile, buildPhantomRows, applyReconciliation, suggest,
 } from "./lib/cotisants.js";
@@ -596,13 +596,16 @@ app.get("/api/admin/roster", authenticateAdmin, (req, res) => {
   if (filter === "cotisants") rows = rows.filter(r => r.cotisant);
   if (filter === "pending") rows = rows.filter(r => !r.search_key && (r.source_id === "helloasso" || r.source_id === "ext"));
   if (q) {
-    const qTokens = q.split(" ").filter(Boolean);
-    rows = rows.filter(r =>
-      (r.pxx || "").includes(q) ||
-      scoreEtudiant(qTokens, r._tok || tokensNom(r.prenom, r.nom)) > 0
-    );
+    // MÊME moteur que la recherche publique (api/lib/search.js) : les
+    // correspondances pxx d'abord, puis les noms classés par pertinence
+    // (score du nom, puis promo la plus récente) — l'alphabétique noyait
+    // les résultats pertinents au milieu des quasi-matches.
+    const pxxHits = rows.filter(r => (r.pxx || "").includes(q));
+    const rest = rows.filter(r => !(r.pxx || "").includes(q));
+    rows = [...pxxHits, ...chercherEtudiants(q, rest, Infinity)];
+  } else {
+    rows = [...rows].sort((a, b) => (a.nom || "").localeCompare(b.nom || "") || (a.prenom || "").localeCompare(b.prenom || ""));
   }
-  rows = [...rows].sort((a, b) => (a.nom || "").localeCompare(b.nom || "") || (a.prenom || "").localeCompare(b.prenom || ""));
   const total = rows.length;
   const page = Math.max(1, parseInt(req.query.page || "1", 10) || 1);
   const slice = rows.slice((page - 1) * PAGE, page * PAGE).map(r => {
