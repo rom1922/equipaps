@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chercherEtudiants, similarite, tokensNom } from "./search.js";
 
-const R = (pxx, prenom, nom) => ({ pxx, prenom, nom, search_key: `${prenom} ${nom}`.toLowerCase() });
+const R = (pxx, prenom, nom, promo = "25") => ({ pxx, prenom, nom, promo, search_key: `${prenom} ${nom}`.toLowerCase() });
 // Petit roster réaliste : l'homonyme, les tirets, les accents.
 const roster = [
   R("25giunta", "Romain", "Giunta"),
@@ -16,6 +16,7 @@ const roster = [
   R("25hllr", "Alice", "Hélie"),
 ];
 const px = (query) => chercherEtudiants(query, roster).map(r => r.pxx);
+const px2 = (list, query) => chercherEtudiants(query, list).map(r => r.pxx);
 
 test("exact : prenom nom, nom seul, prenom seul", () => {
   assert.deepEqual(px("romain giunta"), ["25giunta"]);
@@ -61,6 +62,31 @@ test("similarité : préfixe > JW > seuil > bruit", () => {
 test("tokens : découpe, normalisation, sans vide", () => {
   assert.deepEqual(tokensNom("Jean-Romain", "L'Hélie"), ["jean", "romain", "l", "helie"]);
   assert.deepEqual(tokensNom(null, null), []);
+});
+
+test("promo : à qualité égale, la promo récente d'abord (elena seul)", () => {
+  const elenas = [
+    R("02elena", "Elena", "Dupont", "02"),
+    R("26elena", "Elena", "Martin", "26"),
+    R("25elena", "Elena", "Rossi", "25"),
+  ];
+  assert.deepEqual(px2(elenas, "elena"), ["26elena", "25elena", "02elena"]);
+});
+
+test("promo : le nom complet d'une ancienne promo gagne quand même", () => {
+  const elenas = [
+    R("02elena", "Elena", "Dupont", "02"),
+    R("25elena", "Elena", "Rossi", "25"),
+  ];
+  // requête partielle « elena dup » : la Dupont (P02) matche mieux que la
+  // Rossi (P25) -> elle monte, malgré son âge.
+  assert.equal(px2(elenas, "elena dup")[0], "02elena");
+  // mais à match égal sur le nom complet, la récente passe devant.
+  const homonymes = [
+    R("02elena", "Elena", "Dupont", "02"),
+    R("25elena", "Elena", "Dupont", "25"),
+  ];
+  assert.deepEqual(px2(homonymes, "elena dupont"), ["25elena", "02elena"]);
 });
 
 test("rangées sans nom (legacy) écartées, jamais renvoyées", () => {

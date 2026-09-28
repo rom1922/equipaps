@@ -171,6 +171,12 @@ app.post("/api/editevent", authenticateAdmin, async (req, res) => {
       await db
         .delete(schema.paps)
         .where(and(eq(schema.paps.eid, id), eq(schema.paps.pxx, pxx)))
+      // Retiré d'un événement = plus gagnant : sa participation obtenue ne
+      // doit plus compter dans les compteurs (bug 2026-09-28 : resultats
+      // orphelins laissés par l'édition, vus par la fiche élève).
+      await db
+        .delete(schema.resultats)
+        .where(and(eq(schema.resultats.eid, id), eq(schema.resultats.pxx, pxx)))
     }
   }
   for (const pxx of users) {
@@ -218,6 +224,12 @@ app.post("/api/removeevent", authenticateAdmin, async (req, res) => {
   await db
     .delete(schema.paps)
     .where(eq(schema.paps.eid, id));
+  await db
+    .delete(schema.hpaps)
+    .where(eq(schema.hpaps.eid, id));
+  await db
+    .delete(schema.resultats)
+    .where(eq(schema.resultats.eid, id));
   await db
     .delete(schema.events)
     .where(eq(schema.events.id, id));

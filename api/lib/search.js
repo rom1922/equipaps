@@ -77,9 +77,19 @@ export function scoreEtudiant(qTokens, nomTokens) {
   return score;
 }
 
-// Recherche sur une liste d'étudiants { prenom, nom, ... } (le roster en
-// mémoire). `limit` premiers par score décroissant ; les ex æquo par ordre
-// d'entrée (stable). Les rangées sans nom (legacy) sont écartées.
+// Promo en nombre (« 25 » -> 25) pour le tri ; inconnue -> -1 (dernière).
+function promoNum(e) {
+  const p = parseInt(e.promo, 10);
+  return Number.isFinite(p) ? p : -1;
+}
+
+// Recherche sur une liste d'étudiants { prenom, nom, promo, ... } (le roster
+// en mémoire). Deux critères de tri, dans cet ordre :
+//   1. score du nom décroissant (la qualité du match gouverne TOUJOURS) ;
+//   2. à qualité égale, la promo la plus récente d'abord — taper « elena »
+//      liste les Elena récentes avant les anciennes ; une Elena de P02 ne
+//      monte que si son nom matche strictement mieux que les autres.
+// Les rangées sans nom (legacy) sont écartées.
 export function chercherEtudiants(query, etudiants, limit = 8) {
   const qTokens = normSearch(query).split(" ").filter(Boolean);
   if (!qTokens.length) return [];
@@ -90,6 +100,6 @@ export function chercherEtudiants(query, etudiants, limit = 8) {
     const score = scoreEtudiant(qTokens, tokens);
     if (score > 0) out.push({ e, score });
   }
-  out.sort((x, y) => y.score - x.score);
+  out.sort((x, y) => y.score - x.score || promoNum(y.e) - promoNum(x.e));
   return out.slice(0, limit).map(x => x.e);
 }
