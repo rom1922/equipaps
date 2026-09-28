@@ -8,6 +8,7 @@ import jsonwebtoken from "jsonwebtoken";
 import multer from "multer";
 import { normLogin, normSearch } from "./lib/normalize.js";
 import { rankRegistrants } from "./lib/draw.js";
+import { chercherEtudiants, scoreEtudiant, tokensNom } from "./lib/search.js";
 import {
   loadCotisantsFromText, reconcile, buildPhantomRows, applyReconciliation, suggest,
 } from "./lib/cotisants.js";
@@ -71,6 +72,8 @@ let roster = [];
 let rosterByPxx = new Map();
 async function reloadRoster() {
   roster = await loadRoster();
+  // Tokens de recherche précalculés (recherche floue, cf. api/lib/search.js)
+  for (const r of roster) r._tok = r.search_key ? tokensNom(r.prenom, r.nom) : [];
   rosterByPxx = new Map(roster.map(r => [r.pxx, r]));
   console.log(`roster chargé : ${roster.length} élèves (${roster.filter(r => r.search_key).length} recherchables)`);
 }
@@ -432,25 +435,15 @@ app.get("/api/event/:id", actualizeResults, async (req, res) => {
   res.status(200).json(event);
 });
 
-// Recherche floue par nom sur le roster (même approche que Pain de Mine).
+// Recherche floue par nom sur le roster (moteur pur : api/lib/search.js).
+// La requête est découpée en MOTS, chacun apparié au prénom ou au nom
+// (préfixe ou similarité Jaro >= 0.80) : ordre libre, casse/accents couverts,
+// coquilles tolérées (« romain g », « giunta ro », « gint roma »).
 // Surface PUBLIQUE : ne renvoie que ce qu'il faut pour choisir et lever les
 // homonymes (nom + login + promo), jamais l'email ni le téléphone (RGPD).
 app.get("/api/roster/search", (req, res) => {
-  const q = normSearch(req.query.q || "");
-  if (q.length < 2) return res.json([]);
-  const out = [];
-  for (const r of roster) {
-    if (!r.search_key) continue;
-    const first = r.search_key.split(" ")[0];
-    // clause principale : le nom complet contient la requête ; clause de repli
-    // (requête plus longue que le prénom) bornée à >=3 car. pour éviter les
-    // faux positifs sur des prénoms courts (« ad » ⊂ « spada »).
-    if (r.search_key.includes(q) || (first.length >= 3 && q.includes(first))) {
-      out.push({ prenom: r.prenom, nom: r.nom, pxx: r.pxx, promo: r.promo });
-      if (out.length >= 40) break;
-    }
-  }
-  res.json(out.slice(0, 8));
+  res.json(chercherEtudiants(req.query.q || "", roster, 8)
+    .map(r => ({ prenom: r.prenom, nom: r.nom, pxx: r.pxx, promo: r.promo })));
 });
 
 app.post("/api/paps", authenticateJWT, async (req, res) => {
@@ -591,10 +584,10 @@ app.get("/api/admin/roster", authenticateAdmin, (req, res) => {
   if (filter === "cotisants") rows = rows.filter(r => r.cotisant);
   if (filter === "pending") rows = rows.filter(r => !r.search_key && (r.source_id === "helloasso" || r.source_id === "ext"));
   if (q) {
+    const qTokens = q.split(" ").filter(Boolean);
     rows = rows.filter(r =>
-      (r.search_key || "").includes(q) ||
-      normSearch(`${r.prenom || ""} ${r.nom || ""}`).includes(q) ||
-      (r.pxx || "").includes(q)
+      (r.pxx || "").includes(q) ||
+      scoreEtudiant(qTokens, r._tok || tokensNom(r.prenom, r.nom)) > 0
     );
   }
   rows = [...rows].sort((a, b) => (a.nom || "").localeCompare(b.nom || "") || (a.prenom || "").localeCompare(b.prenom || ""));
@@ -864,6 +857,67 @@ app.post("/api/roster/external", async (req, res) => {
   });
   await reloadRoster();
   res.status(201).json({ success: true, pxx });
+});
+
+// Fiche élève (bureau) : ses inscriptions et ses compteurs par type —
+// totaux (tout l'historique) et depuis le référentiel de comptage courant.
+app.get("/api/admin/eleve/:pxx", authenticateAdmin, async (req, res) => {
+  const pxx = req.params.pxx;
+  const r = rosterByPxx.get(pxx);
+  if (!r) {
+    res.status(404).json({ success: false, message: "Élève introuvable." });
+    return;
+  }
+  const comptageDepuis = await getComptageDepuis();
+
+  // Ses inscriptions (paps) avec l'événement et son type ; « obtenu » = la
+  // place a été gagnée (resultats), sinon simple inscription/liste d'attente.
+  const inscriptions = await db.select().from(schema.paps)
+    .where(eq(schema.paps.pxx, pxx));
+  const eids = [...new Set(inscriptions.map(p => p.eid))];
+  const eventsById = new Map();
+  for (const eid of eids) {
+    const ev = await db.select().from(schema.events)
+      .where(eq(schema.events.id, eid)).then(rr => rr[0]);
+    if (ev) eventsById.set(eid, ev);
+  }
+  const obtenuSet = new Set(await db.select().from(schema.resultats)
+    .where(eq(schema.resultats.pxx, pxx))
+    .then(rr => rr.map(x => x.eid)));
+
+  // Compteurs : participations gagnées par type (resultats joint aux events).
+  const [allRows] = await pool.query(
+    `SELECT e.type AS type, COUNT(*) AS c FROM resultats r
+     JOIN events e ON e.id = r.eid WHERE r.pxx = ? GROUP BY e.type`, [pxx]);
+  let [fenRows] = [allRows];
+  if (comptageDepuis) {
+    [fenRows] = await pool.query(
+      `SELECT e.type AS type, COUNT(*) AS c FROM resultats r
+       JOIN events e ON e.id = r.eid
+       WHERE r.pxx = ? AND e.date >= ? GROUP BY e.type`, [pxx, comptageDepuis]);
+  }
+  const par = rows => ({
+    sortie: Number((rows.find(x => x.type === "sortie") || {}).c || 0),
+    atelier: Number((rows.find(x => x.type === "atelier") || {}).c || 0),
+  });
+
+  res.json({
+    success: true,
+    eleve: { pxx: r.pxx, prenom: r.prenom, nom: r.nom, email: r.email,
+             promo: r.promo, cotisant: r.cotisant, source_id: r.source_id },
+    comptageDepuis,
+    totaux: par(allRows),
+    depuisReferentiel: comptageDepuis ? par(fenRows) : null,
+    evenements: inscriptions
+      .map(p => {
+        const ev = eventsById.get(p.eid);
+        if (!ev) return null;
+        return { eid: p.eid, name: ev.name, date: ev.date, type: ev.type,
+                 closed: ev.closed, obtenu: obtenuSet.has(p.eid) };
+      })
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.date) - new Date(a.date)),
+  });
 });
 
 // Monitoring admin : chiffres agrégés pour le tableau de bord.

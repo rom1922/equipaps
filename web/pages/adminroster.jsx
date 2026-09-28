@@ -5,6 +5,7 @@ import { BackButton, LinkButton, promoLabel } from "../components/utils";
 import { isAdmin, adminFetch } from "../res/admin";
 import { CsvDropzone } from "../components/csvdropzone";
 import { ReconciliationReport } from "../components/reconciliationreport";
+import { EleveDetail } from "../components/elevedetail";
 
 async function fetchSummary() {
   const res = await adminFetch("/api/admin/summary");
@@ -72,6 +73,7 @@ export default function AdminRosterPage() {
   const [editing, setEditing] = createSignal(null);
   const [draft, setDraft] = createSignal({});
   const [showAdd, setShowAdd] = createSignal(false);
+  const [detailPxx, setDetailPxx] = createSignal(null);
   const [newPerson, setNewPerson] = createSignal({ prenom: "", nom: "", email: "", promo: "", cotisant: false });
 
   const loadRoster = async () => {
@@ -352,7 +354,13 @@ export default function AdminRosterPage() {
                       >
                         <tr classList={{ "bg-yellow-100": pending(), "": !pending() }} class="border-b border-black/5">
                           <td class="p-1">
-                            <span class="font-semibold">{r.prenom || r.nom ? `${r.prenom || ""} ${r.nom || ""}`.trim() : <span class="italic text-gray-500">(sans nom)</span>}</span>
+                            <button
+                              onClick={() => setDetailPxx(r.pxx)}
+                              class="font-semibold text-left cursor-pointer hover:bg-vc/20 rounded px-1"
+                              title="Voir la fiche : inscriptions et compteurs"
+                            >
+                              {r.prenom || r.nom ? `${r.prenom || ""} ${r.nom || ""}`.trim() : <span class="italic text-gray-500">(sans nom)</span>}
+                            </button>
                             <Show when={r.promo}><span class="text-xs text-gray-500"> · {promoLabel(r.promo)}</span></Show>
                           </td>
                           <td class="p-1 text-xs text-gray-500">{r.pxx}</td>
@@ -408,6 +416,7 @@ export default function AdminRosterPage() {
             {tableStatus() && <div class="text-center">{tableStatus()}</div>}
           </div>
         </Show>
+        <EleveDetail pxx={detailPxx()} onClose={() => setDetailPxx(null)}/>
       </div>
     </Layout>
   );
