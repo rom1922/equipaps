@@ -423,12 +423,13 @@ app.get("/api/events", actualizeResults, async (req, res) => {
   const events = await db
     .select()
     .from(schema.events)
-    .orderBy(schema.events.date)
-    // .where(gte(schema.events.date, new Date()));
-  
+    .orderBy(schema.events.date);
+  const fenetre = await getFenetreHeures();   // portée par chaque événement (phase côté liste)
+
   for (const event of events) {
     var users = (await fetchEvent(event.id)).users || [];
     event.places = event.participants - users.length;
+    event.fenetre = fenetre;
   }
 
   res.json(events);
