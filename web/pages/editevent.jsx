@@ -4,6 +4,7 @@ import { Layout } from "../components/layout";
 import { useNavigate, useParams } from "@solidjs/router";
 import { BackButton, LinkButton, dateForDateTimeInputValue, promoLabel } from "../components/utils";
 import { RosterSearch } from "../components/rostersearch";
+import { ConfirmDialog } from "../components/confirmdialog";
 import { isAdmin, adminHeaders } from "../res/admin";
 
 async function fetchEvent(id) {
@@ -28,6 +29,7 @@ export default function EventForm() {
   const [pxxs, setPxxs] = createSignal([]);
   const [names, setNames] = createSignal({});
   const [status, setStatus] = createSignal("");
+  const [confirmRemove, setConfirmRemove] = createSignal(false);
 
   const label = (u) => (u.prenom || u.nom)
     ? `${u.prenom || ''} ${u.nom || ''}`.trim() + (u.promo ? ` (${promoLabel(u.promo)})` : '')
@@ -261,9 +263,19 @@ export default function EventForm() {
           <button type="submit" class="bg-green-600 text-white rounded p-2 mb-1 font-bold cursor-pointer" onClick={openEvent}>Rouvrir le PAPS</button>
         </Show>
 
-        <button type="submit" class="bg-rf text-white rounded p-2 font-bold cursor-pointer" onClick={handleRemove}>Supprimer l'évènement</button>
+        <button type="submit" class="bg-rf text-white rounded p-2 font-bold cursor-pointer" onClick={() => setConfirmRemove(true)}>Supprimer l'évènement</button>
         </Show>
         {status() && <div class="mt-2 text-center">{status()}</div>}
+        <ConfirmDialog
+          open={confirmRemove()}
+          title="Supprimer l'événement ?"
+          confirmLabel="Supprimer définitivement"
+          onCancel={() => setConfirmRemove(false)}
+          onConfirm={handleRemove}
+        >
+          <p>Ça détruit l'événement et toutes ses inscriptions, sans retour arrière.</p>
+          <p>Si c'est pour des désistements, fermer ou rouvrir le PAPS suffit souvent.</p>
+        </ConfirmDialog>
 
       </div>
     </Layout>

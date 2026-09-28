@@ -3,17 +3,20 @@ import { createSignal, onCleanup, Show } from "solid-js";
 // Phase dérivée d'un événement : le temps et la clôture font l'état, jamais la
 // plénitude (liste d'attente maintenue — décision Vicente 2026-09-24 ; « plein »
 // n'est pas « fermé »). `closed` = l'événement a eu lieu, gagnants figés.
-//   upcoming : avant l'ouverture du PAPS (compte à rebours vers paps)
-//   window   : fenêtre prioritaire de 24 h (compte à rebours vers paps+24h)
-//   draw     : vrai PAPS, premier arrivé premier servi
-//   ended    : clôturé / passé
+//   upcoming : avant l'ouverture — « Équi-PAPS débute dans … » (rouge pastel)
+//   window   : fenêtre prioritaire — « Équi-PAPS en cours · PAPS débute dans … »
+//              (orange pastel) ; sa durée vient du bureau (ev.fenetre, défaut 24 h)
+//   draw     : vrai PAPS, premier arrivé premier servi (vert pastel)
+//   ended    : clôturé / passé (gris)
 export function eventPhase(ev, now = new Date()) {
   const paps = new Date(ev.paps);
   const date = new Date(ev.date);
-  const deadline = new Date(paps.getTime() + 24 * 60 * 60 * 1000);
+  const f = Number(ev.fenetre);
+  const fenetre = Number.isFinite(f) && f >= 1 ? f : 24;
+  const deadline = new Date(paps.getTime() + fenetre * 60 * 60 * 1000);
   if (ev.closed || now >= date) return { key: "ended", label: "Terminé", tone: "muted" };
-  if (now < paps) return { key: "upcoming", label: "Ouverture du PAPS", at: paps, tone: "warn" };
-  if (now < deadline) return { key: "window", label: "Fenêtre prioritaire", at: deadline, tone: "accent" };
+  if (now < paps) return { key: "upcoming", label: "Équi-PAPS débute dans", at: paps, tone: "wait" };
+  if (now < deadline) return { key: "window", label: "Équi-PAPS en cours", atLabel: "PAPS débute dans", at: deadline, tone: "accent" };
   return { key: "draw", label: "PAPS ouvert", tone: "open" };
 }
 
@@ -38,8 +41,8 @@ export function Countdown(props) {
 }
 
 // Badge de phase, réutilisé par la liste et la page événement (user ET
-// bureau) : rectangle net (pas de pilule), tons pastel — orange avant
-// l'ouverture, vert pendant le PAPS, gris quand c'est terminé.
+// bureau) : rectangle net (pas de pilule), tons pastel — rouge avant
+// l'ouverture, orange pendant l'équi-PAPS, vert au vrai PAPS, gris terminé.
 export function PhaseChip(props) {
   const ph = () => eventPhase(props.ev);
   return (
@@ -47,13 +50,14 @@ export function PhaseChip(props) {
       class="inline-flex items-center gap-1 text-xs font-semibold rounded-none px-2 py-0.5 whitespace-nowrap"
       classList={{
         "bg-gray-200 text-gray-700": ph().tone === "muted",
-        "bg-orange-100 text-orange-800": ph().tone === "warn",
-        "bg-green-100 text-green-800": ph().tone === "accent" || ph().tone === "open",
+        "bg-red-100 text-red-800": ph().tone === "wait",
+        "bg-orange-100 text-orange-800": ph().tone === "accent",
+        "bg-green-100 text-green-800": ph().tone === "open",
       }}
     >
       {ph().label}
       <Show when={ph().at}>
-        <span class="font-normal">· <Countdown at={ph().at}/></span>
+        <span class="font-normal">{ph().atLabel ? ` · ${ph().atLabel}` : " · "} <Countdown at={ph().at}/></span>
       </Show>
     </span>
   );

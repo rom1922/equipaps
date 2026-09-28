@@ -24,7 +24,7 @@ export default function App() {
 
       <p><b>Objectif :</b> répartir les PAPS pour éviter des cas où certain.es mineur.euses n'ont pas pu profiter de suffisamment d'évènements.</p>
 
-      <p><b>Concrètement :</b> priorisation des cotisants, puis de ceux qui ont le moins bénéficié de sorties BDA. (ordre lexicographique)</p>
+      <p><b>Concrètement :</b> priorisation des cotisants, puis de celles et ceux qui ont le moins bénéficié de sorties et d'ateliers BDA (comptés séparément). Les compteurs repartent de zéro à chaque rentrée.</p>
       <p><i>Le BDA se réserve le droit de modifier la répartition des PAPS en cas de problème.</i></p>
       <LinkButton href="/listevents"><div class="bg-vf text-rc w-fit px-4 py-2 rounded">Liste des événements</div></LinkButton>
     

@@ -134,7 +134,12 @@ export default function EventPage() {
           <>
             <div class="mb-2">
               <h2 class="text-2xl font-bold">{ev().name}</h2>
-              <div class="mt-1 flex flex-row gap-2 items-center"><PhaseChip ev={ev()}/><TypeChip ev={ev()}/></div>
+              <div class="mt-1 flex flex-row gap-2 items-center flex-wrap">
+                <PhaseChip ev={ev()}/><TypeChip ev={ev()}/>
+                <Show when={!ev().closed}>
+                  <span class="text-xs text-gray-500">fenêtre prioritaire de {ev().fenetre || 24} h après l'ouverture</span>
+                </Show>
+              </div>
               <Show when={isAdmin()}>
                 <LinkButton href={"/editevent/" + ev().id}>Modifier l'événement</LinkButton>
               </Show>

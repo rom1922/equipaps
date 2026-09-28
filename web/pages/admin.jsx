@@ -24,19 +24,48 @@ export default function AdminPage() {
   const [password, setPassword] = createSignal("");
   const [status, setStatus] = createSignal("");
   const [comptage, setComptage] = createSignal(null);
+  const [fenetre, setFenetre] = createSignal(null);
+  const [fenetreInput, setFenetreInput] = createSignal("");
   const [comptageDate, setComptageDate] = createSignal("");
   const [confirmComptage, setConfirmComptage] = createSignal(false);
   // Source réactive : dès que la session s'ouvre, le résumé se charge.
   const [summary] = createResource(() => (isAdmin() ? "on" : null), fetchSummary);
 
-  // Référentiel de comptage : chargé dès que la session bureau est ouverte.
+  // Référentiel de comptage + fenêtre prioritaire : chargés dès que la
+  // session bureau est ouverte.
   createEffect(async () => {
-    if (!isAdmin()) { setComptage(null); return; }
+    if (!isAdmin()) { setComptage(null); setFenetre(null); return; }
     try {
       const res = await fetch("/api/admin/comptage", { headers: adminHeaders() });
       if (res.ok) setComptage(await res.json());
     } catch (_) { /* réessayé au prochain affichage */ }
+    try {
+      const res = await fetch("/api/admin/fenetre", { headers: adminHeaders() });
+      if (res.ok) setFenetre(await res.json());
+    } catch (_) { /* réessayé au prochain affichage */ }
   });
+
+  const saveFenetre = async (e) => {
+    e.preventDefault();
+    const h = parseInt(fenetreInput(), 10);
+    if (!Number.isFinite(h) || h < 1) { setStatus("Choisis un nombre d'heures (1 min)."); return; }
+    setStatus("Fenêtre mise à jour...");
+    try {
+      const res = await fetch("/api/admin/fenetre", {
+        method: "POST",
+        headers: adminHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ heures: h }),
+      });
+      if (res.status === 401) { setStatus("Session expirée. Reconnecte-toi."); return; }
+      const j = await res.json();
+      if (j.success === false) { setStatus(j.message || "Erreur."); return; }
+      setFenetre(j);
+      setFenetreInput("");
+      setStatus(`Fenêtre prioritaire réglée à ${j.heures} h.`);
+    } catch (_) {
+      setStatus("Erreur lors du réglage de la fenêtre.");
+    }
+  };
 
   const applyComptage = async () => {
     setConfirmComptage(false);
@@ -142,6 +171,23 @@ export default function AdminPage() {
               <Show when={comptage().depuis}>
                 <button onClick={() => { setComptageDate(""); setConfirmComptage(true); }} class="text-xs underline text-gray-600 cursor-pointer mt-1">Recompter tout l'historique</button>
               </Show>
+            </div>
+          </Show>
+          <Show when={isAdmin() && fenetre()}>
+            <div class="bg-black/5 rounded p-3">
+              <div class="font-bold text-sm mb-1">Fenêtre prioritaire</div>
+              <p class="text-xs text-gray-600 mb-2">Durée pendant laquelle les inscrits sont triés par équité après l'ouverture. Passée la fenêtre : premier arrivé, premier servi. Visible par les élèves sur la page de l'événement.</p>
+              <div class="text-xs text-gray-600 mb-1">Actuelle : <span class="font-semibold">{fenetre().heures} h</span></div>
+              <form onSubmit={saveFenetre} class="flex gap-2 items-center flex-wrap">
+                <input
+                  type="number" min="1" max="168" required
+                  placeholder="heures"
+                  value={fenetreInput()}
+                  onInput={e => setFenetreInput(e.target.value)}
+                  class="border rounded p-2 w-24"
+                />
+                <button type="submit" class="bg-vf text-white rounded p-2 font-bold cursor-pointer text-sm">Régler</button>
+              </form>
             </div>
           </Show>
           <div class="flex flex-col gap-2 mt-2">

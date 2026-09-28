@@ -17,7 +17,7 @@ export function EleveDetail(props) {
   const compteur = (label, n, total) => (
     <div class="bg-black/5 rounded p-2 text-center">
       <div class="text-2xl font-bold">{total}</div>
-      <div class="text-xs text-gray-600">{label}{n != null ? ` (dont ${n} dans le référentiel)` : ""}</div>
+      <div class="text-xs text-gray-600">{label}{n != null ? ` (dont ${n} depuis le dernier renouvellement)` : ""}</div>
     </div>
   );
 
@@ -25,7 +25,7 @@ export function EleveDetail(props) {
     <Show when={props.pxx}>
       <div class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => props.onClose()}>
         <div class="bg-white rounded-md shadow-lg p-4 max-w-md w-full max-h-[85vh] overflow-auto" onClick={e => e.stopPropagation()}>
-          <Show when={!detail.loading && detail()} fallback={<div class="text-center text-gray-600">Chargement…</div>}>
+          <Show when={!detail.loading && detail()} fallback={<div class="text-center text-gray-600">{detail.error ? "Échec du chargement de la fiche — réessaie." : "Chargement…"}</div>}>
             <div class="flex items-start justify-between gap-2 mb-2">
               <div>
                 <h3 class="font-bold text-lg">
@@ -60,8 +60,14 @@ export function EleveDetail(props) {
                       <span class="text-xs text-gray-500 w-24 shrink-0">{new Date(ev.date).toLocaleDateString()}</span>
                       <span class="text-sm truncate flex-grow">{ev.name}</span>
                       <TypeChip ev={ev}/>
-                      <span class="text-xs shrink-0 font-semibold" classList={{ "text-vf": ev.obtenu, "text-gray-400": !ev.obtenu }}>
-                        {ev.obtenu ? "✓ obtenue" : "non obtenue"}
+                      <span class="text-xs shrink-0 font-semibold" classList={{
+                        "text-vf": ev.obtenu,
+                        "text-gray-500": !ev.obtenu && !ev.closed,
+                        "text-gray-400": !ev.obtenu && ev.closed,
+                      }}>
+                        {ev.obtenu ? (ev.type === "atelier" ? "✓ obtenu" : "✓ obtenue")
+                          : !ev.closed ? "en attente"
+                          : (ev.type === "atelier" ? "non retenu" : "non retenue")}
                       </span>
                     </div>
                   )}

@@ -85,6 +85,22 @@ await reloadRoster();
 // elle ne déplace que la borne basse du compteur (remise à l'équilibre
 // annuelle), paps/hpaps/resultats restent intacts.
 const CLE_PARAM_COMPTAGE = "comptage_depuis";
+const CLE_PARAM_FENETRE = "fenetre_prioritaire_heures";
+// Fenêtre prioritaire d'ouverture (en heures) : durée pendant laquelle les
+// inscrits sont triés par équité (le moins servi d'abord). Réglable par le
+// bureau, 24 h par défaut. Après la fenêtre : vrai PAPS, premier arrivé
+// premier servi.
+async function getFenetreHeures() {
+  try {
+    const row = await db.select().from(schema.parametres)
+      .where(eq(schema.parametres.cle, CLE_PARAM_FENETRE)).then(r => r[0]);
+    const h = row ? parseInt(row.valeur, 10) : 24;
+    return Number.isFinite(h) && h >= 1 ? h : 24;
+  } catch (err) {
+    console.error("parametres indisponible :", err.message);
+    return 24;
+  }
+}
 async function getComptageDepuis() {
   try {
     const row = await db.select().from(schema.parametres)
@@ -249,7 +265,8 @@ async function getEventUsers(id) {
     .from(schema.events)
     .where(eq(schema.events.id, id))
     .then(r => r[0]);
-  const deadline = ev ? new Date(new Date(ev.paps).getTime() + 24 * 60 * 60 * 1000) : new Date(0);
+  const fenetreHeures = await getFenetreHeures();
+  const deadline = ev ? new Date(new Date(ev.paps).getTime() + fenetreHeures * 60 * 60 * 1000) : new Date(0);
 
   // Compteur d'obtentions de chaque inscrit : participations passées du MÊME
   // type que cet événement (sortie vs atelier), dans le référentiel de
@@ -303,8 +320,9 @@ async function fetchEvent(id) {
     .then(r => r[0]);
 
   if (!event) return null;
-  
+
   event.users = await getEventUsers(id);
+  event.fenetre = await getFenetreHeures();   // affiché côté élève (phase + délai)
   return event;
 }
 
@@ -351,6 +369,12 @@ async function closeEvent(event) {
   const users = await getEventUsers(event.id);
   const winners = users.slice(0, evRow?.participants ?? 0);
 
+  // Figer = REMPLACER : on vide les anciennes lignes d'abord — une réouverture
+  // suivie d'une re-clôture ne doit jamais doubler les compteurs (bug du
+  // 2026-09-28 : réouvrir, corriger, re-clôturer dupliquait chaque gagnant).
+  await db
+    .delete(schema.resultats)
+    .where(eq(schema.resultats.eid, event.id));
   if (winners.length > 0) {
     await db
       .insert(schema.resultats)
@@ -517,9 +541,19 @@ app.post("/api/paps", authenticateJWT, async (req, res) => {
     return;
   }
 
-  await db
-    .insert(schema.paps)
-    .values({ eid, pxx, date, uid: req.user.uid });
+  try {
+    await db
+      .insert(schema.paps)
+      .values({ eid, pxx, date, uid: req.user.uid });
+  } catch (err) {
+    // Course concurrente (double-clic, deux onglets) : l'index UNIQUE
+    // (eid,pxx) tranche — l'autre requête a gagné, c'est la même inscription.
+    if (err && err.code === "ER_DUP_ENTRY") {
+      res.status(200).json(await fetchEvent(eid));
+      return;
+    }
+    throw err;
+  }
 
   await db
     .insert(schema.hpaps)
@@ -751,6 +785,24 @@ app.post("/api/admin/portail/key", authenticateAdmin, async (req, res) => {
 // compteurs à l'équilibre. Absente = tout l'historique compte.
 app.get("/api/admin/comptage", authenticateAdmin, async (req, res) => {
   res.json({ success: true, depuis: await getComptageDepuis() });
+});
+
+// --- Fenêtre prioritaire (durée d'équité après l'ouverture, en heures) ---
+app.get("/api/admin/fenetre", authenticateAdmin, async (req, res) => {
+  res.json({ success: true, heures: await getFenetreHeures() });
+});
+
+app.post("/api/admin/fenetre", authenticateAdmin, async (req, res) => {
+  const h = parseInt(req.body.heures, 10);
+  if (!Number.isFinite(h) || h < 1 || h > 168) {
+    res.status(400).json({ success: false, message: "La fenêtre est un nombre d'heures entre 1 et 168." });
+    return;
+  }
+  const maj = new Date();
+  await db.insert(schema.parametres)
+    .values({ cle: CLE_PARAM_FENETRE, valeur: String(h), maj_at: maj })
+    .onDuplicateKeyUpdate({ set: { valeur: String(h), maj_at: maj } });
+  res.json({ success: true, heures: h });
 });
 
 app.post("/api/admin/comptage", authenticateAdmin, async (req, res) => {
