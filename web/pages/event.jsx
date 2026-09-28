@@ -66,7 +66,7 @@ export default function EventPage() {
         setStatus(res.message || "Erreur lors de l'enregistrement. Merci de réessayer.");
         return;
       } else {
-        setStatus("Ta demande a bien été enregistrée ! Tu seras notifié dans les heures qui suivent :)");
+        setStatus("Ta demande a bien été enregistrée ! Le classement est visible ici et évolue jusqu'à la clôture du PAPS.");
         refetch();
       }
     } catch (err) {
@@ -172,16 +172,16 @@ export default function EventPage() {
 
               <div class="mb-2 p-2 rounded bg-black/5 text-sm text-gray-700">
                 <Show
-                  when={new Date(new Date(ev().paps).getTime() + 24 * 60 * 60 * 1000) > new Date()}
+                  when={new Date(new Date(ev().paps).getTime() + (ev().fenetre || 24) * 60 * 60 * 1000) > new Date()}
                   fallback={<div><b>Vrai PAPS</b> — premier arrivé, premier servi.</div>}
                 >
                   <div>
-                    <b>Fenêtre prioritaire (24&nbsp;h)</b> — le tirage favorise le moins servi.
-                    Il reste <b><Countdown at={new Date(new Date(ev().paps).getTime() + 24 * 60 * 60 * 1000)}/></b>.
+                    <b>Fenêtre prioritaire ({ev().fenetre || 24}&nbsp;h)</b> — le tirage favorise le moins servi.
+                    Il reste <b><Countdown at={new Date(new Date(ev().paps).getTime() + (ev().fenetre || 24) * 60 * 60 * 1000)}/></b>.
                   </div>
                 </Show>
                 <div class="text-xs text-gray-600 mt-0.5">
-                  Ordre de priorité : moins de sorties d'abord, puis le cotisant à égalité, puis l'ordre d'inscription. Passé 24&nbsp;h, premier arrivé premier servi.
+                  Ordre de priorité : moins de {ev().type === "atelier" ? "ateliers" : "sorties"} d'abord, puis le cotisant à égalité, puis l'ordre d'inscription. Passé {ev().fenetre || 24}&nbsp;h, premier arrivé premier servi.
                 </div>
               </div>
 
@@ -198,7 +198,9 @@ export default function EventPage() {
                 <div class="flex flex-col gap-1" role="list">
                   <For each={ev().users}>
                     {(user, i) => {
-                      const retenu = i() < ev().participants;
+                      // Clos : le gel (resultats) fait foi, pas le top-N
+                      // recalculé (une seule vérité — revue adverse R2-C1).
+                      const retenu = ev().closed ? !!user.gagne : i() < ev().participants;
                       const nom = (user.prenom || user.nom) ? `${user.prenom || ''} ${user.nom || ''}`.trim() : user.pxx;
                       return (
                         <>

@@ -27,6 +27,8 @@ export default function EventForm() {
   const [description, setDescription] = createSignal("");
   const [type, setType] = createSignal("sortie");
   const [pxxs, setPxxs] = createSignal([]);
+  const [initialPxxs, setInitialPxxs] = createSignal(null);
+  const [usersData, setUsersData] = createSignal({});
   const [names, setNames] = createSignal({});
   const [status, setStatus] = createSignal("");
   const [confirmRemove, setConfirmRemove] = createSignal(false);
@@ -45,7 +47,12 @@ export default function EventForm() {
       setDescription(ev().description);
       setType(ev().type === "atelier" ? "atelier" : "sortie");
       setPxxs(ev().users.map(user => user.pxx) || []);
+      // Liste de référence au moment où le formulaire est ouvert : le serveur
+      // ne supprimera que les retraits explicites depuis CE moment — une
+      // inscription posée entre-temps survit (revue adverse R2-K4).
+      setInitialPxxs(ev().users.map(user => user.pxx) || []);
       setNames(Object.fromEntries((ev().users || []).map(u => [u.pxx, label(u)])));
+      setUsersData(Object.fromEntries((ev().users || []).map(u => [u.pxx, u])));
     }
   })
 
@@ -65,6 +72,7 @@ export default function EventForm() {
           type: type(),
           description: description(),
           users: pxxs(),
+          initialUsers: initialPxxs() || [],
         }),
       });
       if (r.status === 401) { setStatus("Session expirée. Reconnecte-toi dans l'espace bureau."); return; }
@@ -224,7 +232,7 @@ export default function EventForm() {
               required
               class="border rounded p-2"
             />
-            <label>Inscrits (hors accompagnants) : cliquer pour retirer. Les {participants() || 0} premiers sont retenus, le reste en attente.</label>
+            <label>Inscrits (hors accompagnants) : cliquer pour retirer. <Show when={ev() && ev().closed} fallback={<span>Les {participants() || 0} premiers sont retenus, le reste en attente.</span>}><span>Événement clos : ✓ = place gelée. Enregistrer retire la personne ; la liste d'attente sera promue.</span></Show></label>
             <div class="flex flex-col gap-1">
               <For each={pxxs()}>
                 {(user, i) => (
@@ -233,14 +241,17 @@ export default function EventForm() {
                     title="Cliquer pour retirer"
                     classList={{
                       'flex items-center gap-2 rounded px-2 py-1 cursor-pointer': true,
-                      'bg-vc/25': i() < participants(),
-                      'bg-black/5': i() >= participants(),
+                      'bg-vc/25': ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants(),
+                      'bg-black/5': ev() && ev().closed ? !usersData()[user]?.gagne : i() >= participants(),
                     }}
                   >
                     <span class="text-xs text-gray-500 w-5 text-right shrink-0">{i() + 1}</span>
                     <span class="flex-grow text-sm truncate">{names()[user] || user}</span>
-                    <span class="text-xs shrink-0" classList={{ 'text-vf font-bold': i() < participants(), 'text-gray-500': i() >= participants() }}>
-                      {i() < participants() ? '✓ retenu' : 'en attente'}
+                    <Show when={usersData()[user]?.aValider}>
+                      <span class="text-xs bg-yellow-200 rounded-full px-2 py-0.5 shrink-0" title="Identité déclarée non validée par le bureau">à valider</span>
+                    </Show>
+                    <span class="text-xs shrink-0" classList={{ 'text-vf font-bold': (ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()), 'text-gray-500': !(ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()) }}>
+                      {(ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()) ? '✓ retenu' : 'en attente'}
                     </span>
                     <span class="text-gray-400 shrink-0">×</span>
                   </div>

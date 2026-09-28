@@ -56,6 +56,14 @@ test("les gagnants sont les N premières places", () => {
   assert.equal(winners(list, deadline, 0).length, 0);
 });
 
+test("tri stable : à date égale, l'ordre d'entrée (date, id) fait foi", () => {
+  // Le serveur fournit les inscrits triés par (date, id) : une égalité à la
+  // milliseconde ne doit jamais être remélangée (revue adverse O3).
+  const t = new Date(1000);
+  const r = rankRegistrants([u("A", 0, false, t), u("B", 0, false, t), u("C", 0, false, t)], deadline);
+  assert.deepEqual(ids(r), ["A", "B", "C"]);
+});
+
 test("la borne de 24 h est stricte : pile à la deadline reste prioritaire", () => {
   // date == deadline -> non tardif (aLate = date > deadline, faux à égalité).
   const r = rankRegistrants([u("late", 0, true, 1001), u("edge", 9, false, 1000)], deadline);

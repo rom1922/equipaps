@@ -4,6 +4,7 @@
   "description": "BDA Mines Paris PSL",
   "main": "index.js",
   "scripts": {
+    "test": "node --test \"api/lib/*.test.mjs\"",
     "start:web": "vite --host",
     "start:api": "node --env-file=.env ./api/index.js",
     "start": "npm run start:web & npm run start:api",

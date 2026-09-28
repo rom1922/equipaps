@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, text, datetime, int, boolean } from "drizzle-orm/mysql-core";
+import { mysqlTable, varchar, text, datetime, int, boolean, uniqueIndex } from "drizzle-orm/mysql-core";
 
 export const events = mysqlTable("events", {
   id: varchar("id", { length: 16 }).notNull().primaryKey(),
@@ -19,11 +19,18 @@ export const paps = mysqlTable("paps", {
   eid: varchar("eid", { length: 16 }).notNull().references(() => events.id),
   pxx: varchar("pxx", { length: 10 }).notNull(),
   // Session (users.id) qui a posé l'inscription : le garde-fou
-  // une-personne-par-événement s'appuie dessus (NULL = rangée
-  // historique, antérieure à la colonne).
+  // une-personne-par-session s'appuie dessus (NULL = rangée
+  // historique ou ajout bureau, exemptée du garde).
   uid: varchar("uid", { length: 16 }),
-  date: datetime("date").notNull(),
-});
+  // Millisecondes : en rush, des dizaines d'inscriptions tombent à la
+  // même seconde ; le tri (date, id) doit pouvoir départager (O3).
+  date: datetime("date", { fsp: 3 }).notNull(),
+}, (t) => ({
+  // Une inscription par personne et par événement (course de rush).
+  uniqPapsPersonne: uniqueIndex("uniq_paps_eid_pxx").on(t.eid, t.pxx),
+  // Une personne inscrite par session et par événement (garde du PAPS).
+  uniqPapsSession: uniqueIndex("uniq_paps_eid_uid").on(t.eid, t.uid),
+}));
 
 export const users = mysqlTable("users", {
   id: varchar("id", { length: 16 }).notNull().primaryKey(),
@@ -34,7 +41,10 @@ export const resultats = mysqlTable("resultats", {
   id: int("id").notNull().autoincrement().primaryKey(),
   eid: varchar("eid", { length: 16 }).notNull().references(() => events.id),
   pxx: varchar("pxx", { length: 10 }).notNull(),
-});
+}, (t) => ({
+  // Le gel ne duplique jamais un gagnant (filet du regeler).
+  uniqResultats: uniqueIndex("uniq_resultats_eid_pxx").on(t.eid, t.pxx),
+}));
 
 export const hpaps = mysqlTable("hpaps", {
   id: int("id").notNull().autoincrement().primaryKey(),

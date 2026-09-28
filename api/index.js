@@ -18,6 +18,13 @@ import {
 
 dotenv.config();
 
+// Fail-fast : sans ces deux secrets, le hash de référence serait celui de la
+// chaîne vide (session bureau ouverte à tous — revue adverse 2026-09-28, R1).
+if (!String(process.env.EVENT_PASSWORD || "").trim() || !String(process.env.JWT_SECRET || "").trim()) {
+  console.error("EVENT_PASSWORD et JWT_SECRET sont requis : refus de démarrer avec l'espace bureau ouvert à tous.");
+  process.exit(1);
+}
+
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -144,8 +151,13 @@ const authenticateAdmin = (req, res, next) => {
 };
 
 app.post("/api/createevent", authenticateAdmin, async (req, res) => {
-  const { name, location, participants, description } = req.body;
+  const { name, location, description } = req.body;
   const type = req.body.type === "atelier" ? "atelier" : "sortie";
+  const participants = parseInt(req.body.participants, 10);
+  if (!Number.isFinite(participants) || participants < 1) {
+    res.status(400).json({ success: false, message: "Le nombre de participants doit être au moins 1." });
+    return;
+  }
 
   const date = new Date(req.body.date);
   const paps = new Date(req.body.paps);
@@ -158,20 +170,31 @@ app.post("/api/createevent", authenticateAdmin, async (req, res) => {
 });
 
 app.post("/api/editevent", authenticateAdmin, async (req, res) => {
-  const { id, name, location, participants, description, users } = req.body;
+  const { id, name, location, description } = req.body;
+  const users = Array.isArray(req.body.users) ? req.body.users : [];
+  // Liste de référence au moment où le bureau a ouvert le formulaire : le
+  // serveur ne supprime QUE les retraits explicites. Une inscription posée
+  // entre-temps survit (revue adverse 2026-09-28, R2-K4 : le remplacement
+  // complet détruisait silencieusement les inscriptions fraîches).
+  const initialUsers = Array.isArray(req.body.initialUsers) ? req.body.initialUsers : null;
+  const participants = parseInt(req.body.participants, 10);
   const type = req.body.type === "atelier" ? "atelier" : "sortie";
   const date = new Date(req.body.date);
   const paps = new Date(req.body.paps);
+  if (!Number.isFinite(participants) || participants < 1) {
+    res.status(400).json({ success: false, message: "Le nombre de participants doit être au moins 1." });
+    return;
+  }
   if (!id) {
     res.status(400).json({ success: false, message: "ID manquant" });
     return;
   }
-  const event = await db
+  const eventRow = await db
     .select()
     .from(schema.events)
     .where(eq(schema.events.id, id))
     .then(r => r[0]);
-  if (!event) {
+  if (!eventRow) {
     res.status(404).json({ success: false, message: "Événement introuvable" });
     return;
   }
@@ -179,32 +202,44 @@ app.post("/api/editevent", authenticateAdmin, async (req, res) => {
     .update(schema.events)
     .set({ name, date, paps, location, participants, type, description })
     .where(eq(schema.events.id, id));
-  // delete all paps for this event
+  // Diff, pas remplacement : on retire uniquement les pxx que le bureau a
+  // VUS puis retirés (initialUsers sans users). Sans initialUsers (ancien
+  // appel), on garde l'ancien comportement pour compatibilité.
   const eventUsers = await getEventUsers(id);
   const pxxs = eventUsers.map(user => user.pxx);
-  for (const pxx of pxxs) {
-    if (!users.includes(pxx)) {
+  const baseRetraits = initialUsers ? initialUsers.filter(pxx => !users.includes(pxx)) : pxxs.filter(pxx => !users.includes(pxx));
+  for (const pxx of baseRetraits) {
+    if (pxxs.includes(pxx)) {
       await db
         .delete(schema.paps)
-        .where(and(eq(schema.paps.eid, id), eq(schema.paps.pxx, pxx)))
+        .where(and(eq(schema.paps.eid, id), eq(schema.paps.pxx, pxx)));
       // Retiré d'un événement = plus gagnant : sa participation obtenue ne
-      // doit plus compter dans les compteurs (bug 2026-09-28 : resultats
-      // orphelins laissés par l'édition, vus par la fiche élève).
+      // doit plus compter dans les compteurs (resultats orphelins, 2026-09-28).
       await db
         .delete(schema.resultats)
-        .where(and(eq(schema.resultats.eid, id), eq(schema.resultats.pxx, pxx)))
+        .where(and(eq(schema.resultats.eid, id), eq(schema.resultats.pxx, pxx)));
     }
   }
   for (const pxx of users) {
     if (!pxxs.includes(pxx)) {
-      await db
-        .insert(schema.paps)
-        .values({ eid: id, pxx, date: new Date() });
-      await db
-        .insert(schema.hpaps)
-        .values({ eid: id, pxx, date: new Date() });
+      try {
+        await db
+          .insert(schema.paps)
+          .values({ eid: id, pxx, date: new Date() });
+        await db
+          .insert(schema.hpaps)
+          .values({ eid: id, pxx, date: new Date() });
+      } catch (err) {
+        // Ajouté entre-temps par une autre session : l'index unique tranche,
+        // l'inscription existe, on continue (R2-K10).
+        if (!err || err.code !== "ER_DUP_ENTRY") throw err;
+      }
     }
   }
+  // Événement clos modifié : on re-gèle (promotion de la liste d'attente et
+  // troncature à N places incluses — R2-C2/C3). force=true : le drapeau est
+  // déjà posé, on remplace juste le gel sur l'état recalculé.
+  if (eventRow.closed) await regeler(id, true);
   res.status(200).json({ success: true, id });
 });
 
@@ -224,7 +259,7 @@ app.post("/api/closeevent", authenticateAdmin, async (req, res) => {
     return;
   }
   try {
-    await closeEvent({ id });
+    await regeler(id);
     res.status(200).json({ success: true, id });
   } catch(err) {
     res.status(500).send(err.toString())
@@ -257,7 +292,7 @@ async function getEventUsers(id) {
     .select()
     .from(schema.paps)
     .where(eq(schema.paps.eid, id))
-    .orderBy(schema.paps.date);
+    .orderBy(schema.paps.date, schema.paps.id);
 
   // Fenêtre prioritaire de 24 h à partir de l'ouverture de l'équi-PAPS (paps).
   const ev = await db
@@ -277,15 +312,21 @@ async function getEventUsers(id) {
   let counts = new Map();
   if (pxxList.length > 0) {
     const placeholders = pxxList.map(() => "?").join(", ");
-    const args = [...pxxList, ev?.type === "atelier" ? "atelier" : "sortie"];
+    // Les compteurs EXCLUDENT les résultats de l'événement tiré lui-même :
+    // classer, c'est demander « combien d'AUTRES événements a-t-il obtenus »
+    // (passe 1 O1 : à la re-clôture, les anciens gagnants comptaient double).
+    // Date en ISO UTC : drizzle écrit/relit les DATETIME en mur UTC, une
+    // chaîne ISO passe par le même canal ; un Date en paramètre brut serait
+    // sérialisé en heure locale et décalerait la borne (passe 1 O2).
+    const args = [ev?.id, ...pxxList, ev?.type === "atelier" ? "atelier" : "sortie"];
     let dateFilter = "";
     if (comptageDepuis) {
       dateFilter = " AND e.date >= ?";
-      args.push(comptageDepuis);
+      args.push(comptageDepuis.toISOString());
     }
     const [rows] = await pool.query(
       `SELECT r.pxx, COUNT(*) AS c FROM resultats r JOIN events e ON e.id = r.eid
-       WHERE r.pxx IN (${placeholders}) AND e.type = ?${dateFilter}
+       WHERE r.eid != ? AND r.pxx IN (${placeholders}) AND e.type = ?${dateFilter}
        GROUP BY r.pxx`,
       args
     );
@@ -302,6 +343,7 @@ async function getEventUsers(id) {
         prenom: r?.prenom || null,
         nom: r?.nom || null,
         promo: r?.promo || null,
+        aValider: !!r && !r.search_key && (r.source_id === "ext" || r.source_id === "helloasso"),
         date: new Date(user.date)
       }
     }
@@ -323,6 +365,15 @@ async function fetchEvent(id) {
 
   event.users = await getEventUsers(id);
   event.fenetre = await getFenetreHeures();   // affiché côté élève (phase + délai)
+  if (event.closed) {
+    // Une seule vérité sur un événement clos : le gel (resultats), pas un
+    // re-classement vivant qui bouge à chaque import de cotisants (R2-C1).
+    const gel = new Set(await db.select().from(schema.resultats)
+      .where(eq(schema.resultats.eid, id)).then(r => r.map(x => x.pxx)));
+    event.users = event.users
+      .map(u => ({ ...u, gagne: gel.has(u.pxx) }))
+      .sort((a, b) => (b.gagne ? 1 : 0) - (a.gagne ? 1 : 0));   // gagnants d'abord, ordre stable
+  }
   return event;
 }
 
@@ -342,6 +393,10 @@ app.post("/api/openevent", authenticateAdmin, async (req, res) => {
     return;
   }
   try {
+    // Rouvrir annule le gel : les résultats de l'événement ne sont pas acquis
+    // (l'événement n'a pas eu lieu) — sans ça, la re-clôture les comptait
+    // contre leurs propres gagnants (passe 1, O1).
+    await db.delete(schema.resultats).where(eq(schema.resultats.eid, id));
     await db.update(schema.events).set({ closed: false }).where(eq(schema.events.id, id));
     res.status(200).json({ success: true, id });
   } catch(err) {
@@ -349,42 +404,42 @@ app.post("/api/openevent", authenticateAdmin, async (req, res) => {
   }
 });
 
-async function closeEvent(event) {
-
-  const closed = await db
-    .select()
-    .from(schema.events)
-    .where(eq(schema.events.id, event.id))
-    .then(r => r[0]?.closed);
-  if (closed) return;
-
-  // On ne fige QUE les gagnants (les N premières places) : chaque place obtenue
-  // incrémente le compteur d'événements (sortie = atelier = 1 événement). La
-  // liste d'attente au-delà de N n'est pas comptée comme un événement suivi.
-  const evRow = await db
-    .select()
-    .from(schema.events)
-    .where(eq(schema.events.id, event.id))
-    .then(r => r[0]);
-  const users = await getEventUsers(event.id);
-  const winners = users.slice(0, evRow?.participants ?? 0);
-
-  // Figer = REMPLACER : on vide les anciennes lignes d'abord — une réouverture
-  // suivie d'une re-clôture ne doit jamais doubler les compteurs (bug du
-  // 2026-09-28 : réouvrir, corriger, re-clôturer dupliquait chaque gagnant).
-  await db
-    .delete(schema.resultats)
-    .where(eq(schema.resultats.eid, event.id));
-  if (winners.length > 0) {
-    await db
-      .insert(schema.resultats)
-      .values(winners.map(user => ({ eid: event.id, pxx: user.pxx })));
+// Geler un événement : UNE fonction, atomique (revue adverse 2026-09-28,
+// R2-K1/K2/C2 + passe 1 O1/O5). Le drapeau est posé EN PREMIER par un UPDATE
+// conditionnel : seule la requête qui gagne exécute le gel — une rafale de
+// visites qui déclenche l'auto-clôture ne duplique plus les gagnants, et tout
+// paps accepté avant le drapeau est compté, tout paps après est refusé.
+// Le classement EXCLUT les résultats de l'événement lui-même (les anciens
+// gagnants d'une réouverture ne pèsent pas contre eux), le gel est REMPLACÉ
+// en transaction (promotion de la liste d'attente et troncature à N places
+// incluses), l'index unique resultats(eid,pxx) reste le filet de sécurité.
+async function regeler(id, force = false) {
+  if (!force) {
+    const [res] = await pool.query(
+      "UPDATE events SET closed = 1 WHERE id = ? AND closed = 0", [id]);
+    if (!res.affectedRows) return false;   // quelqu'un d'autre vient de geler
   }
-
-  await db
-    .update(schema.events)
-    .set({ closed: true })
-    .where(eq(schema.events.id, event.id));
+  const evRow = await db.select().from(schema.events)
+    .where(eq(schema.events.id, id)).then(r => r[0]);
+  const users = await getEventUsers(id);
+  const winners = users.slice(0, Math.max(0, evRow?.participants ?? 0));
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query("DELETE FROM resultats WHERE eid = ?", [id]);
+    if (winners.length > 0) {
+      await conn.query(
+        "INSERT INTO resultats (eid, pxx) VALUES ?",
+        [winners.map(u => [id, u.pxx])]);
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+  return true;
 }
 
 async function actualizeResults(req, res, next) {
@@ -397,7 +452,7 @@ async function actualizeResults(req, res, next) {
   for (const event of events) {
     if (new Date() > new Date(event.date)) {
       console.log("Closing event:", event)
-      await closeEvent(event);
+      await regeler(event.id);
     }
   }
 
@@ -406,15 +461,20 @@ async function actualizeResults(req, res, next) {
 
 const authenticateJWT = (req, res, next) => {
   const token = req.headers.authorization;
-  if (token) {
-    const decoded = jsonwebtoken.verify(req.headers.authorization, process.env.JWT_SECRET);
+  if (!token) {
+    res.status(401).send("Requête invalide, merci de rafraîchir la page.");
+    return;
+  }
+  try {
+    const decoded = jsonwebtoken.verify(token, process.env.JWT_SECRET);
     if (decoded == null || decoded.uid == null) {
       res.status(401).send("Requête invalide, merci de rafraîchir la page.");
       return;
     }
     req.user = decoded;
     next();
-  } else {
+  } catch (_) {
+    // jeton absent/invalide/expiré : 401 net, jamais de stack divulguée
     res.status(401).send("Requête invalide, merci de rafraîchir la page.");
   }
 };
@@ -428,7 +488,7 @@ app.get("/api/events", actualizeResults, async (req, res) => {
 
   for (const event of events) {
     var users = (await fetchEvent(event.id)).users || [];
-    event.places = event.participants - users.length;
+    event.places = Math.max(0, event.participants - users.length);
     event.fenetre = fenetre;
   }
 
@@ -508,6 +568,14 @@ app.post("/api/paps", authenticateJWT, async (req, res) => {
     return;
   }
 
+  // Un événement passé ne prend plus d'inscription — sinon l'inscription était
+  // acceptée puis gelée « gagnante » au premier GET par l'auto-clôture
+  // (revue adverse 2026-09-28, R2-V1).
+  if (new Date(eventRaw.date) <= date) {
+    res.status(400).json({ success: false, message: "Cet événement est déjà passé." });
+    return;
+  }
+
   if (!rosterByPxx.has(pxx)) {
     res.status(400).json({ success: false, message: "Mineur inconnu" });
     return;
@@ -547,9 +615,16 @@ app.post("/api/paps", authenticateJWT, async (req, res) => {
       .insert(schema.paps)
       .values({ eid, pxx, date, uid: req.user.uid });
   } catch (err) {
-    // Course concurrente (double-clic, deux onglets) : l'index UNIQUE
-    // (eid,pxx) tranche — l'autre requête a gagné, c'est la même inscription.
+    // Course concurrente (double-clic, onglets en double, rafale) : les
+    // index UNIQUE tranchent. (eid,pxx) = même personne déjà inscrite ->
+    // idempotent ; (eid,uid) = même session qui vient d'inscrire quelqu'un
+    // d'autre -> le garde, tard mais net (R2-K3 : sous 40 requêtes
+    // simultanées, le check-then-insert seul laissait passer 4 élèves).
     if (err && err.code === "ER_DUP_ENTRY") {
+      if (/uid/i.test(String(err.message || ""))) {
+        res.status(400).json({ success: false, message: "Une seule inscription par personne et par événement : ce navigateur vient d'inscrire quelqu'un d'autre. Si tu es quelqu'un d'autre, ouvre une fenêtre privée, utilise ton propre appareil, ou demande au bureau." });
+        return;
+      }
       res.status(200).json(await fetchEvent(eid));
       return;
     }
@@ -912,6 +987,17 @@ app.post("/api/roster/external", async (req, res) => {
     res.json({ success: true, pxx: dup.pxx });
     return;
   }
+  // Si le nom+prénom EXISTENT déjà au roster (cherchable), on ne crée pas une
+  // deuxième identité de la même personne : elle pèserait deux fois dans le
+  // tirage (R2-V2). On rend la rangée existante.
+  const existant = roster.find(r =>
+    r.search_key &&
+    normLogin(r.nom) === nn && normLogin(r.prenom) === normLogin(prenom)
+  );
+  if (existant) {
+    res.json({ success: true, pxx: existant.pxx, existant: true });
+    return;
+  }
   const used = new Set(roster.map(r => r.pxx));
   let pxx = ("x" + nn).slice(0, 10), n = 0;
   while (used.has(pxx)) {
@@ -958,10 +1044,11 @@ app.get("/api/admin/eleve/:pxx", authenticateAdmin, async (req, res) => {
      JOIN events e ON e.id = r.eid WHERE r.pxx = ? GROUP BY e.type`, [pxx]);
   let [fenRows] = [allRows];
   if (comptageDepuis) {
+    // ISO UTC : même canal d'écriture que drizzle, pas de décalage local (O2).
     [fenRows] = await pool.query(
       `SELECT e.type AS type, COUNT(*) AS c FROM resultats r
        JOIN events e ON e.id = r.eid
-       WHERE r.pxx = ? AND e.date >= ? GROUP BY e.type`, [pxx, comptageDepuis]);
+       WHERE r.pxx = ? AND e.date >= ? GROUP BY e.type`, [pxx, comptageDepuis.toISOString()]);
   }
   const par = rows => ({
     sortie: Number((rows.find(x => x.type === "sortie") || {}).c || 0),
