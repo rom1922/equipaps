@@ -500,27 +500,26 @@ app.post("/api/paps", authenticateJWT, async (req, res) => {
     return;
   }
 
-  const storedPxx = await db
+  // Garde-fou : UNE personne par session et par ÉVÉNEMENT — c'est l'empilement
+  // de places sur un même événement qu'on veut empêcher, pas les navigateurs
+  // partagés (fratrie, ordinateur de la résidence : la garde globale
+  // précédente bloquait des inscrits légitimes, et se contournait en une
+  // fenêtre privée de toute façon).
+  const conflit = await db
     .select()
-    .from(schema.users)
-    .where(eq(schema.users.id, req.user.uid))
-    .then(r => r[0]?.pxx);
-
-  if (storedPxx && storedPxx !== pxx) {
-    res.status(400).json({ success: false, message: "Merci de ne pas papser pour plus d'une personne." });
+    .from(schema.paps)
+    .where(and(eq(schema.paps.eid, eid), eq(schema.paps.uid, req.user.uid)))
+    .then(r => r[0]);
+  if (conflit && conflit.pxx !== pxx) {
+    const r = rosterByPxx.get(conflit.pxx);
+    const qui = (r?.prenom || r?.nom) ? `${r?.prenom || ""} ${r?.nom || ""}`.trim() : conflit.pxx;
+    res.status(400).json({ success: false, message: `Une seule inscription par personne et par événement : ce navigateur a déjà inscrit ${qui} pour cet événement. Si tu es quelqu'un d'autre, ouvre une fenêtre privée, utilise ton propre appareil, ou demande au bureau.` });
     return;
-  }
-
-  if (storedPxx == null) {
-    await db
-      .update(schema.users)
-      .set({ pxx })
-      .where(eq(schema.users.id, req.user.uid));
   }
 
   await db
     .insert(schema.paps)
-    .values({ eid, pxx, date });
+    .values({ eid, pxx, date, uid: req.user.uid });
 
   await db
     .insert(schema.hpaps)

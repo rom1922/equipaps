@@ -18,6 +18,10 @@ export const paps = mysqlTable("paps", {
   id: int("id").notNull().autoincrement().primaryKey(),
   eid: varchar("eid", { length: 16 }).notNull().references(() => events.id),
   pxx: varchar("pxx", { length: 10 }).notNull(),
+  // Session (users.id) qui a posé l'inscription : le garde-fou
+  // une-personne-par-événement s'appuie dessus (NULL = rangée
+  // historique, antérieure à la colonne).
+  uid: varchar("uid", { length: 16 }),
   date: datetime("date").notNull(),
 });
 
