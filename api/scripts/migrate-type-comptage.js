@@ -10,6 +10,9 @@
 //     tout l'historique compte, comportement inchangé avant/après migration.
 
 import mysql from "mysql2/promise";
+import dotenv from "dotenv";
+
+dotenv.config(); // lit l'environnement serveur si présent, sans rien exiger
 
 const pool = await mysql.createPool({
   host: process.env.DB_MYSQL_HOST,
