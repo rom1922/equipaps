@@ -7,7 +7,7 @@ import { and, eq, gte } from "drizzle-orm";
 import jsonwebtoken from "jsonwebtoken";
 import multer from "multer";
 import { normLogin, normSearch } from "./lib/normalize.js";
-import { rankRegistrants } from "./lib/draw.js";
+import { rankRegistrants, avecPlacesEnAttente } from "./lib/draw.js";
 import { chercherEtudiants, tokensNom } from "./lib/search.js";
 import {
   loadCotisantsFromText, reconcile, buildPhantomRows, applyReconciliation, suggest,
@@ -287,7 +287,7 @@ app.post("/api/removeevent", authenticateAdmin, async (req, res) => {
   res.status(200).json({ success: true });
 });
 
-async function getEventUsers(id) {
+async function inscritsEvent(id) {
   const users = await db
     .select()
     .from(schema.paps)
@@ -351,7 +351,50 @@ async function getEventUsers(id) {
 
   // Tri par les règles verrouillées (fonction pure, cf. api/lib/draw.js).
   const list = Object.keys(possibleUsers).map(pxx => ({ pxx, ...possibleUsers[pxx] }));
-  return rankRegistrants(list, deadline);
+  return { ev, deadline, list };
+}
+
+// Places en attente ailleurs (tirages ouverts simultanés, 2026-09-29) : pour
+// classer l'événement `id`, chaque inscrit actuellement RETENU (top-N du
+// classement de base, gelé seulement) dans un AUTRE événement ouvert du MÊME
+// type pèse comme une obtention — sinon deux PAPS ouverts à la même heure
+// permettaient de rafler une place dans chacun en comptant pour zéro. La
+// protection anti-pénalité croisée vit dans `avecPlacesEnAttente` (draw.js) :
+// seules les places plus ANCIENNES que l'inscription à `id` pénalisent, la
+// première place d'un inscrit reste fraîche dans son propre tirage.
+// Le classement de base des autres événements s'appuie uniquement sur les
+// résultats GELÉS : jamais de récursion croisée (le classement de A dépend
+// du classement de B, qui dépendrait de celui de A…), donc jamais
+// d'oscillation — un gel d'un autre événement ou une nouvelle inscription
+// repositionnent simplement les pendances au calcul suivant.
+// `ev` : la rangée de l'événement tiré ; `datesIci` : Map pxx -> date
+// d'inscription à l'événement tiré.
+async function pendancesPour(ev, datesIci) {
+  const map = new Map();
+  if (!ev) return map;
+  const autres = (await db
+    .select()
+    .from(schema.events)
+    .where(and(eq(schema.events.closed, false), eq(schema.events.type, ev.type))))
+    .filter(e => e.id !== ev.id);
+  for (const autre of autres) {
+    const { list, deadline } = await inscritsEvent(autre.id);
+    const retenus = rankRegistrants(list, deadline)
+      .slice(0, Math.max(0, autre.participants ?? 0));
+    for (const r of retenus) {
+      if (!datesIci.has(r.pxx)) continue;        // pas inscrit ici : rien à pénaliser
+      if (!map.has(r.pxx)) map.set(r.pxx, []);
+      map.get(r.pxx).push(new Date(r.date));     // date d'inscription dans l'autre tirage
+    }
+  }
+  return map;
+}
+
+async function getEventUsers(id) {
+  const { ev, deadline, list } = await inscritsEvent(id);
+  const datesIci = new Map(list.map(u => [u.pxx, u.date]));
+  const avecPendances = avecPlacesEnAttente(list, await pendancesPour(ev, datesIci));
+  return rankRegistrants(avecPendances, deadline);
 }
 
 async function fetchEvent(id) {

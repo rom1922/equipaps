@@ -2,7 +2,7 @@
 // que l'événement, dans le référentiel de comptage courant (calcul côté API). (node --test). Fonction pure, aucune DB.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rankRegistrants, winners } from "./draw.js";
+import { rankRegistrants, winners, avecPlacesEnAttente } from "./draw.js";
 
 const deadline = new Date(1000); // paps + 24 h, en ms pour la lisibilité
 const u = (pxx, sorties, cotisant, tMs) => ({
@@ -68,4 +68,53 @@ test("la borne de 24 h est stricte : pile à la deadline reste prioritaire", () 
   // date == deadline -> non tardif (aLate = date > deadline, faux à égalité).
   const r = rankRegistrants([u("late", 0, true, 1001), u("edge", 9, false, 1000)], deadline);
   assert.deepEqual(ids(r), ["edge", "late"]);
+});
+
+// --- Places en attente ailleurs (tirages ouverts simultanés, 2026-09-29) ---
+
+test("avecPlacesEnAttente : une place retenue ailleurs, plus ancienne, pèse comme une obtention", () => {
+  // X (l'événement tiré) : A inscrit à t=300, B inscrit à t=100, les deux 0 sortie.
+  // A est actuellement retenu dans l'autre tirage ouvert (inscription à t=50, plus ancienne).
+  const users = [u("A", 0, false, 300), u("B", 0, false, 100)];
+  const pendances = new Map([["A", [new Date(50)]]]);
+  const r = rankRegistrants(avecPlacesEnAttente(users, pendances), deadline);
+  // B (0 effective) passe devant A (0 gellée + 1 en attente).
+  assert.deepEqual(ids(r), ["B", "A"]);
+});
+
+test("avecPlacesEnAttente : l'inscription la plus ancienne est protégée (pas de pénalité croisée)", () => {
+  // A est retenu dans les DEUX tirages : inscrit dans X à t=100 (ancien) et
+  // dans l'autre à t=300 (récent). Dans X, la place en attente de l'autre
+  // tirage est PLUS RÉCENTE : elle ne pénalise pas — A reste à 0 effective.
+  const users = [u("A", 0, false, 100), u("B", 0, false, 50)];
+  const pendances = new Map([["A", [new Date(300)]]]);
+  const r = rankRegistrants(avecPlacesEnAttente(users, pendances), deadline);
+  // Mérite égal avec B (0 effective chacun), B s'est inscrit avant : B devant.
+  assert.deepEqual(ids(r), ["B", "A"]);
+  // Et le champ enAttente n'est pas posé (la place récente ne pénalise pas).
+  const aug = avecPlacesEnAttente(users, pendances);
+  assert.equal(aug.find(x => x.pxx === "A").enAttente, undefined);
+});
+
+test("avecPlacesEnAttente : deux places en attente plus anciennes comptent double", () => {
+  const users = [u("A", 0, false, 300), u("B", 1, false, 100)];
+  const pendances = new Map([["A", [new Date(50), new Date(80)]]]);
+  const r = rankRegistrants(avecPlacesEnAttente(users, pendances), deadline);
+  // A : 0 + 2 en attente = 2, B : 1 -> B devant.
+  assert.deepEqual(ids(r), ["B", "A"]);
+});
+
+test("avecPlacesEnAttente : une place en attente d'un autre type ne remonte pas ici", () => {
+  // Le filtrage par type vit côté API (pendancesPour ne sonde que les
+  // événements ouverts du même type) ; ici, pas d'entrée = pas de pénalité.
+  const users = [u("A", 0, false, 300), u("B", 0, false, 100)];
+  const r = rankRegistrants(avecPlacesEnAttente(users, new Map()), deadline);
+  assert.deepEqual(ids(r), ["B", "A"]);
+});
+
+test("la pénalité ne change pas le groupe : un tardif reste derrière les prioritaires", () => {
+  const users = [u("A", 0, false, 100), u("B", 0, true, 2000)];
+  const pendances = new Map([["A", [new Date(50)]]]);
+  const r = rankRegistrants(avecPlacesEnAttente(users, pendances), deadline);
+  assert.deepEqual(ids(r), ["A", "B"]);
 });

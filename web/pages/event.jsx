@@ -229,6 +229,7 @@ export default function EventPage() {
                                 <Show when={ev().type === 'atelier'} fallback={<span>{user.obtentions} sortie{user.obtentions > 1 ? 's' : ''} obtenue{user.obtentions > 1 ? 's' : ''}</span>}>
                   <span>{user.obtentions} atelier{user.obtentions > 1 ? 's' : ''} obtenu{user.obtentions > 1 ? 's' : ''}</span>
                 </Show>
+                                <Show when={user.enAttente}> · {user.enAttente} en attente ailleurs</Show>
                               </span>
                             </div>
                             <Show when={retenu} fallback={<span class="text-xs text-gray-500 shrink-0">{ev().closed ? (ev().type === "atelier" ? "non retenu" : "non retenue") : "en attente"}</span>}>
