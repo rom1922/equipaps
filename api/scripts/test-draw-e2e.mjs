@@ -1,7 +1,8 @@
 // Test end-to-end du moteur de tirage contre l'API LIVE + la base réelle.
 // Crée un scénario contrôlé, lit le classement via GET /api/event/:id, clôture
 // via POST /api/closeevent (session admin), vérifie les gagnants, puis NETTOIE
-// tout. À lancer sur Euterpe : node --env-file=.env api/scripts/test-draw-e2e.mjs
+// tout. À lancer sur Euterpe, depuis /home/rezal/equipaps (dotenv charge l'env) : node api/scripts/test-draw-e2e.mjs
+import "dotenv/config";
 import mysql from "mysql2/promise";
 import crypto from "node:crypto";
 
