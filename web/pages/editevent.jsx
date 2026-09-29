@@ -251,7 +251,7 @@ export default function EventForm() {
                       <span class="text-xs bg-yellow-200 rounded-full px-2 py-0.5 shrink-0" title="Identité déclarée non validée par le bureau">à valider</span>
                     </Show>
                     <span class="text-xs shrink-0" classList={{ 'text-vf font-bold': (ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()), 'text-gray-500': !(ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()) }}>
-                      {(ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()) ? '✓ retenu' : 'en attente'}
+                      {(ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()) ? '✓ retenu' : (ev() && ev().closed ? 'non retenu' : 'en attente')}
                     </span>
                     <span class="text-gray-400 shrink-0">×</span>
                   </div>

@@ -170,6 +170,7 @@ export default function EventPage() {
                 </div>
               }>
 
+              <Show when={!ev().closed}>
               <div class="mb-2 p-2 rounded bg-black/5 text-sm text-gray-700">
                 <Show
                   when={new Date(new Date(ev().paps).getTime() + (ev().fenetre || 24) * 60 * 60 * 1000) > new Date()}
@@ -181,9 +182,10 @@ export default function EventPage() {
                   </div>
                 </Show>
                 <div class="text-xs text-gray-600 mt-0.5">
-                  Ordre de priorité : moins de {ev().type === "atelier" ? "ateliers" : "sorties"} d'abord, puis le cotisant à égalité, puis l'ordre d'inscription. Passé {ev().fenetre || 24}&nbsp;h, premier arrivé premier servi.
+                  Ordre de priorité : moins {ev().type === "atelier" ? "d'ateliers" : "de sorties"} d'abord, puis le cotisant à égalité, puis l'ordre d'inscription. Passé {ev().fenetre || 24}&nbsp;h, premier arrivé premier servi.
                 </div>
               </div>
+              </Show>
 
               <div class="flex flex-col gap-1">
                 <div class="flex items-baseline justify-between">
@@ -229,7 +231,7 @@ export default function EventPage() {
                 </Show>
                               </span>
                             </div>
-                            <Show when={retenu} fallback={<span class="text-xs text-gray-500 shrink-0">en attente</span>}>
+                            <Show when={retenu} fallback={<span class="text-xs text-gray-500 shrink-0">{ev().closed ? (ev().type === "atelier" ? "non retenu" : "non retenue") : "en attente"}</span>}>
                               <span class="text-xs font-bold text-vf shrink-0">✓ retenu</span>
                             </Show>
                           </div>
