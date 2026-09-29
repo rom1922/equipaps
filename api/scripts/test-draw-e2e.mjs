@@ -13,7 +13,6 @@ const gid = () => Array.from({ length: 16 }, () =>
 const T0 = new Date("2026-09-01T12:00:00Z");      // ouverture (paps)
 const h = (n) => new Date(T0.getTime() + n * 3600 * 1000);
 const FUTURE = new Date("2026-12-01T12:00:00Z");   // date event future -> pas d'auto-clôture
-const PAST = new Date("2026-08-01T12:00:00Z");
 
 let failures = 0;
 const check = (label, cond, got) => {
@@ -39,6 +38,20 @@ async function cleanupByName() {
 async function main() {
   await cleanupByName();
 
+  // Le référentiel de comptage (comptage_depuis, ex. 01/09/2026) exclut les
+  // événements antérieurs : l'historique du test doit vivre APRÈS la borne,
+  // sinon les "sorties déjà obtenues" ne comptent plus et l'ordre attendu casse.
+  let past = new Date("2026-08-01T12:00:00Z");
+  try {
+    const [rows] = await pool.query("SELECT valeur FROM parametres WHERE cle='comptage_depuis'");
+    if (rows.length && rows[0].valeur) {
+      const borne = new Date(rows[0].valeur);
+      if (!Number.isNaN(borne.getTime()) && borne > past) past = new Date(borne.getTime() + 3600 * 1000);
+    }
+  } catch { /* table parametres absente : tout l'historique compte */ }
+  const PAST = past;
+
+
   // Cinq élèves réels : 2 cotisants, 3 non-cotisants.
   const [cot] = await pool.query("SELECT pxx FROM roster WHERE cotisant=1 AND search_key IS NOT NULL LIMIT 2");
   const [non] = await pool.query("SELECT pxx FROM roster WHERE cotisant=0 AND search_key IS NOT NULL LIMIT 3");
@@ -46,16 +59,21 @@ async function main() {
   const s3 = cot[0].pxx, s4 = cot[1].pxx;          // cotisants
   const s1 = non[0].pxx, s2 = non[1].pxx, s5 = non[2].pxx;  // non-cotisants
 
-  const eHist = gid(), eDraw = gid();
-  // Événement d'historique (clos) pour donner des "sorties" ; event de tirage.
-  await pool.query("INSERT INTO events (id,name,date,paps,location,participants,closed) VALUES (?,?,?,?,?,?,1)",
-    [eHist, "E2E-DRAW-TEST-hist", PAST, PAST, "test", 10]);
+  const eDraw = gid();
+  // Événements d'historique (clos) pour donner des "sorties" ; event de tirage.
+  // Un événement DISTINCT par sortie : l'index unique resultats(eid,pxx)
+  // (migration revision-2) refuse plusieurs rangées par paire.
+  const eHists = Array.from({ length: 5 }, () => gid());
+  for (const eh of eHists) {
+    await pool.query("INSERT INTO events (id,name,date,paps,location,participants,closed) VALUES (?,?,?,?,?,?,1)",
+      [eh, "E2E-DRAW-TEST-hist", PAST, PAST, "test", 10]);
+  }
   await pool.query("INSERT INTO events (id,name,date,paps,location,participants,closed) VALUES (?,?,?,?,?,?,0)",
     [eDraw, "E2E-DRAW-TEST-draw", FUTURE, T0, "test", 2]);
 
   // Sorties déjà obtenues : s1 -> 2, s5 -> 5, les autres 0.
   const addSorties = async (pxx, n) => {
-    for (let i = 0; i < n; i++) await pool.query("INSERT INTO resultats (eid,pxx) VALUES (?,?)", [eHist, pxx]);
+    for (let i = 0; i < n; i++) await pool.query("INSERT INTO resultats (eid,pxx) VALUES (?,?)", [eHists[i], pxx]);
   };
   await addSorties(s1, 2);
   await addSorties(s5, 5);
