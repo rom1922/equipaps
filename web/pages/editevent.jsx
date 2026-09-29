@@ -232,7 +232,7 @@ export default function EventForm() {
               required
               class="border rounded p-2"
             />
-            <label>Inscrits (hors accompagnants) : cliquer pour retirer. <Show when={ev() && ev().closed} fallback={<span>Les {participants() || 0} premiers sont retenus, le reste en attente.</span>}><span>Événement clos : ✓ = place gelée. Enregistrer retire la personne ; la liste d'attente sera promue.</span></Show></label>
+            <label>Inscrits (hors accompagnants) : cliquer pour retirer. <Show when={ev() && ev().closed} fallback={<span>Tant que l'événement est ouvert, les {participants() || 0} premiers sont PROVISOIREMENT retenus, le reste en attente.</span>}><span>Événement clos : ✓ = place gelée. Enregistrer retire la personne ; la liste d'attente sera promue.</span></Show></label>
             <div class="flex flex-col gap-1">
               <For each={pxxs()}>
                 {(user, i) => (
@@ -251,7 +251,7 @@ export default function EventForm() {
                       <span class="text-xs bg-yellow-200 rounded-full px-2 py-0.5 shrink-0" title="Identité déclarée non validée par le bureau">à valider</span>
                     </Show>
                     <span class="text-xs shrink-0" classList={{ 'text-vf font-bold': (ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()), 'text-gray-500': !(ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()) }}>
-                      {(ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()) ? '✓ retenu' : (ev() && ev().closed ? 'non retenu' : 'en attente')}
+                      {(ev() && ev().closed ? !!usersData()[user]?.gagne : i() < participants()) ? (ev() && ev().closed ? '✓ retenu' : '✓ provisoirement retenu') : (ev() && ev().closed ? 'non retenu' : 'en attente')}
                     </span>
                     <span class="text-gray-400 shrink-0">×</span>
                   </div>

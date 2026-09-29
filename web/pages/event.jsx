@@ -233,7 +233,7 @@ export default function EventPage() {
                               </span>
                             </div>
                             <Show when={retenu} fallback={<span class="text-xs text-gray-500 shrink-0">{ev().closed ? (ev().type === "atelier" ? "non retenu" : "non retenue") : "en attente"}</span>}>
-                              <span class="text-xs font-bold text-vf shrink-0">✓ retenu</span>
+                              <span class="text-xs font-bold text-vf shrink-0">{ev().closed ? "✓ retenu" : "✓ provisoirement retenu"}</span>
                             </Show>
                           </div>
                         </>
