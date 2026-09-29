@@ -4,8 +4,10 @@
 // places en comptant pour zéro — sa place en attente ailleurs pèse comme une
 // obtention, SAUF dans le tirage de sa plus ancienne inscription (protégée).
 // Crée un scénario contrôlé, lit les classements via GET /api/event/:id,
-// vérifie, puis NETTOIE tout. À lancer sur Euterpe :
-//   node --env-file=.env api/scripts/test-pendances-e2e.mjs
+// vérifie, puis NETTOIE tout. À lancer sur Euterpe, depuis /home/rezal/equipaps
+// (dotenv charge l'environnement du service) :
+//   node api/scripts/test-pendances-e2e.mjs
+import "dotenv/config";
 import mysql from "mysql2/promise";
 
 const API = `http://localhost:${process.env.PORT_API || 8094}`;
@@ -81,8 +83,8 @@ async function main() {
   check("B : `a` porte enAttente=1 (affiché « 1 en attente ailleurs »)",
     uB?.enAttente === 1, uB);
 
-  // 3) Le classement de A n'a pas bougé avec l'ajout d'inscrits à B (pas de
-  //    oscillation croisée : A reste protégé).
+  // 3) Le classement de A n'a pas bougé avec l'ajout d'inscrits à B (pas
+  //    d'oscillation croisée : A reste protégé).
   const evA2 = await (await fetch(`${API}/api/event/${eA}`)).json();
   check("A : `a` toujours retenu après les inscriptions à B (pas d'oscillation)",
     evA2.users?.[0]?.pxx === a, evA2.users);
